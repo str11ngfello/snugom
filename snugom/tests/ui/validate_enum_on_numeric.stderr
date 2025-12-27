@@ -1,0 +1,5 @@
+error: enum validator only supported for string fields
+  --> tests/ui/validate_enum_on_numeric.rs:14:23
+   |
+14 |     #[snugom(validate(enum(allowed = ["1", "2", "3"])))]
+   |                       ^^^^

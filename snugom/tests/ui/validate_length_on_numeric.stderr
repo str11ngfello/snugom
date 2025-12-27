@@ -1,0 +1,5 @@
+error: length validator only supported for strings and collections
+  --> tests/ui/validate_length_on_numeric.rs:14:23
+   |
+14 |     #[snugom(validate(length(min = 1, max = 10)))]
+   |                       ^^^^^^

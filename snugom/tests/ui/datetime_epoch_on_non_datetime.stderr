@@ -1,0 +1,5 @@
+error: #[snugom(datetime(...))] requires a chrono::DateTime<Tz> field or Option thereof
+  --> tests/ui/datetime_epoch_on_non_datetime.rs:13:14
+   |
+13 |     #[snugom(datetime(epoch_millis))]
+   |              ^^^^^^^^^^^^^^^^^^^^^^

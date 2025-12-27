@@ -1,0 +1,5 @@
+error: SnugomEntity requires a field annotated with #[snugom(id)]
+ --> tests/ui/missing_id_field.rs:8:12
+  |
+8 | pub struct InvalidEntity {
+  |            ^^^^^^^^^^^^^

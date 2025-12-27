@@ -1,0 +1,5 @@
+error: indexed on String requires explicit type: indexed(tag) or indexed(text)
+  --> tests/ui/indexed_string_no_type.rs:14:14
+   |
+14 |     #[snugom(indexed)]
+   |              ^^^^^^^

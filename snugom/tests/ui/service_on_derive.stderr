@@ -1,0 +1,5 @@
+error: service is set via bundle! macro, not on the derive
+ --> tests/ui/service_on_derive.rs:5:10
+  |
+5 | #[snugom(service = "test", version = 1)]
+  |          ^^^^^^^

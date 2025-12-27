@@ -1,0 +1,5 @@
+error: #[snugom(id)] requires a field of type String
+  --> tests/ui/id_on_non_string.rs:10:14
+   |
+10 |     #[snugom(id)]
+   |              ^^

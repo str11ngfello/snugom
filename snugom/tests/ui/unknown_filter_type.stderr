@@ -1,0 +1,5 @@
+error: unknown filter type 'invalid', expected tag, text, numeric, boolean, or geo
+  --> tests/ui/unknown_filter_type.rs:13:25
+   |
+13 |     #[snugom(filterable(invalid))]
+   |                         ^^^^^^^

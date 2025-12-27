@@ -1,0 +1,5 @@
+error: #[snugom(id)] cannot be applied to an Option<T>
+  --> tests/ui/id_on_option.rs:10:14
+   |
+10 |     #[snugom(id)]
+   |              ^^

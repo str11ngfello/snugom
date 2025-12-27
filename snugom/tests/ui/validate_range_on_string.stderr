@@ -1,0 +1,5 @@
+error: range validator only supported for numeric fields
+  --> tests/ui/validate_range_on_string.rs:14:23
+   |
+14 |     #[snugom(validate(range(min = 0, max = 100)))]
+   |                       ^^^^^

@@ -1,0 +1,5 @@
+error: required_if validator requires an Option<T> field
+  --> tests/ui/validate_required_if_on_non_option.rs:16:23
+   |
+16 |     #[snugom(validate(required_if = "enabled"))]
+   |                       ^^^^^^^^^^^

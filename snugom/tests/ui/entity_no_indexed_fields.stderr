@@ -1,0 +1,44 @@
+error[E0599]: the method `ensure_search_index` exists for struct `Repo<EntityWithoutIndexedFields>`, but its trait bounds were not satisfied
+  --> tests/ui/entity_no_indexed_fields.rs:15:1
+   |
+ 8 |   pub struct EntityWithoutIndexedFields {
+   |   ------------------------------------- doesn't satisfy `EntityWithoutIndexedFields: SearchEntity`
+...
+15 |   bundle! {
+   |  _^
+16 | |     service: "test",
+17 | |     entities: {
+18 | |         EntityWithoutIndexedFields => "no_index_entities",
+19 | |     }
+20 | | }
+   | |_^ method cannot be called on `Repo<EntityWithoutIndexedFields>` due to unsatisfied trait bounds
+   |
+   = note: the following trait bounds were not satisfied:
+           `EntityWithoutIndexedFields: SearchEntity`
+note: the trait `SearchEntity` must be implemented
+  --> src/search/mod.rs
+   |
+   | pub trait SearchEntity: EntityMetadata + DeserializeOwned {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: this error originates in the macro `bundle` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0080]: evaluation panicked: Entity has no indexed fields. All entities in a bundle must have at least one field marked with #[snugom(filterable)] or #[snugom(sortable)]. Consider adding a 'created_at' field with #[snugom(datetime(epoch_millis), filterable, sortable)].
+  --> tests/ui/entity_no_indexed_fields.rs:15:1
+   |
+15 | / bundle! {
+16 | |     service: "test",
+17 | |     entities: {
+18 | |         EntityWithoutIndexedFields => "no_index_entities",
+19 | |     }
+20 | | }
+   | |_^ evaluation of `test::_` failed inside this call
+   |
+note: inside `validate_entity_has_indexed_fields`
+  --> src/lib.rs
+   |
+   | /         panic!(
+   | |             "Entity has no indexed fields. All entities in a bundle must have at least one \
+   | |              field marked with #[snugom(filterable)] or #[snugom(sortable)]. \
+   | |              Consider adding a 'created_at' field with #[snugom(datetime(epoch_millis), filterable, sortable)]."
+   | |         );
+   | |_________^ the failure occurred here

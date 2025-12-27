@@ -1,0 +1,5 @@
+error: filterable on String requires explicit type: filterable(tag) or filterable(text)
+  --> tests/ui/filterable_string_no_type.rs:14:14
+   |
+14 |     #[snugom(filterable)]
+   |              ^^^^^^^^^^

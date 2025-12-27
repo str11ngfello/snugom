@@ -1,0 +1,5 @@
+error: filterable(geo) can only be used on String fields ("lat,lon" format); use filterable for numeric types
+  --> tests/ui/filterable_geo_on_bool.rs:14:25
+   |
+14 |     #[snugom(filterable(geo))]
+   |                         ^^^

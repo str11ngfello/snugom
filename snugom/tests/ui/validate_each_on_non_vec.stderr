@@ -1,0 +1,5 @@
+error: each validator only supported for collection fields
+  --> tests/ui/validate_each_on_non_vec.rs:14:23
+   |
+14 |     #[snugom(validate(each = "length(min = 1)"))]
+   |                       ^^^^

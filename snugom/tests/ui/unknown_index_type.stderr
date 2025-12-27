@@ -1,0 +1,5 @@
+error: unknown index type 'invalid', expected tag, text, numeric, or geo
+  --> tests/ui/unknown_index_type.rs:13:22
+   |
+13 |     #[snugom(indexed(invalid))]
+   |                      ^^^^^^^

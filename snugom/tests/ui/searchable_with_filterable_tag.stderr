@@ -1,0 +1,5 @@
+error: searchable and filterable(tag) cannot be used together on the same field; searchable creates a TEXT index (tokenized full-text search) while filterable(tag) expects a TAG index (exact/prefix matching). Choose one: use searchable for full-text search, or filterable(tag) for exact matching.
+  --> tests/ui/searchable_with_filterable_tag.rs:17:5
+   |
+17 |     #[snugom(searchable, filterable(tag))]
+   |     ^

@@ -1,0 +1,5 @@
+error: sortable on String requires searchable or filterable(tag/text) to determine index type
+  --> tests/ui/string_sortable_without_type.rs:14:5
+   |
+14 |     #[snugom(sortable)]
+   |     ^

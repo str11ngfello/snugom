@@ -1,0 +1,5 @@
+error: #[snugom(created_at)] requires a chrono::DateTime<Tz> field
+  --> tests/ui/created_at_on_non_datetime.rs:13:14
+   |
+13 |     #[snugom(created_at)]
+   |              ^^^^^^^^^^

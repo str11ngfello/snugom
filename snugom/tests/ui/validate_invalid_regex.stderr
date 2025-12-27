@@ -1,0 +1,8 @@
+error: invalid regex pattern: regex parse error:
+           ^(unclosed
+            ^
+       error: unclosed group
+  --> tests/ui/validate_invalid_regex.rs:13:31
+   |
+13 |     #[snugom(validate(regex = "^(unclosed"))]
+   |                               ^^^^^^^^^^^^

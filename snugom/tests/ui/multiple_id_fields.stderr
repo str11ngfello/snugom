@@ -1,0 +1,5 @@
+error: SnugomEntity allows exactly one #[snugom(id)] field
+  --> tests/ui/multiple_id_fields.rs:14:9
+   |
+14 |     pub another_id: String,
+   |         ^^^^^^^^^^

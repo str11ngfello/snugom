@@ -1,0 +1,5 @@
+error: unknown snugom validator `unknown_rule` on field `name`
+  --> tests/ui/validate_unknown_rule.rs:13:23
+   |
+13 |     #[snugom(validate(unknown_rule))]
+   |                       ^^^^^^^^^^^^

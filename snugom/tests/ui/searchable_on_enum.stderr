@@ -1,0 +1,5 @@
+error: searchable can only be used on String fields; use filterable for numeric or enum types
+  --> tests/ui/searchable_on_enum.rs:22:14
+   |
+22 |     #[snugom(searchable)]
+   |              ^^^^^^^^^^

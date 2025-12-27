@@ -1,0 +1,5 @@
+error: filterable(text) can only be used on String fields; numeric types are always NUMERIC
+  --> tests/ui/filterable_text_on_bool.rs:14:25
+   |
+14 |     #[snugom(filterable(text))]
+   |                         ^^^^
