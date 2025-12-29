@@ -46,8 +46,6 @@ Define entities with `#[derive(SnugomEntity)]`, and use the `run!` macro for dec
     - [Running Examples](#running-examples)
   - [Future Improvements](#future-improvements)
   - [Contributing](#contributing)
-  - [License](#license)
-  - [License](#license-1)
 
 ## Quick Example
 
@@ -137,12 +135,18 @@ async fn example(repo: &Repo<Guild>, conn: &mut ConnectionManager) {
 #[derive(SnugomEntity)]
 #[snugom(version = 1, default_sort = "-created_at")]
 pub struct MyEntity { ... }
+
+// Compound unique: (tenant_id, name) must be unique together
+#[derive(SnugomEntity)]
+#[snugom(version = 1, unique_together = ["tenant_id", "name"])]
+pub struct TenantScopedEntity { ... }
 ```
 
 | Attribute | Required | Description |
 |-----------|----------|-------------|
 | `version = N` | Yes | Schema version stored in metadata |
 | `default_sort = "field"` | No | Default sort field. Prefix with `-` for descending |
+| `unique_together = ["f1", "f2"]` | No | Compound unique constraint across multiple fields |
 
 ### Field Attributes
 
@@ -164,6 +168,9 @@ pub created_at: DateTime<Utc>,
 
 #[snugom(relation(target = "members", cascade = "delete"))]
 pub members: Vec<String>,
+
+#[snugom(unique, filterable(tag))]
+pub slug: String,  // Enforces uniqueness across all entities
 ```
 
 | Attribute | Description |
@@ -179,6 +186,8 @@ pub members: Vec<String>,
 | `updated_at` | Auto-set to `Utc::now()` on create and update |
 | `validate(...)` | Apply validation rules (see [Validation Rules](#validation-rules)) |
 | `relation(target = "...", cascade = "...")` | Define relationship |
+| `unique` | Enforce SQL-like UNIQUE constraint within collection |
+| `unique(case_insensitive)` | Case-insensitive unique ("Foo" == "foo") |
 
 ## Bundle Registration
 
@@ -588,11 +597,3 @@ cargo test -p snugom --lib example01_hello_entity
 ## Contributing
 
 We welcome contributions! Please feel free to submit a pull request.
-
-## License
-
-MIT
-
-## License
-
-MIT
