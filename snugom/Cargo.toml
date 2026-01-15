@@ -3,6 +3,10 @@ name = "snugom"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "snugom"
+path = "src/bin/snugom/main.rs"
+
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -16,11 +20,24 @@ redis = { version = "0.32", features = [
 ] }
 thiserror = "2.0"
 anyhow = "1.0"
+inventory = "0.3"
 snugom-macros = { path = "../snugom-macros", version = "0.1.0" }
 email_address = "0.2"
 url = "2.5"
 uuid = { version = "1.8", features = ["std", "v4"] }
 utoipa = { version = "5.4", optional = true }
+
+# CLI dependencies
+clap = { version = "4.5", features = ["derive", "env", "color"] }
+colored = "2.1"
+comfy-table = "7.1"
+once_cell = "1.20"
+toml = "0.8"
+tokio = { version = "1.37", features = ["macros", "rt-multi-thread", "fs"] }
+env_logger = "0.11"
+syn = { version = "2.0", features = ["full", "parsing", "visit"] }
+walkdir = "2.5"
+proc-macro2 = "1.0"
 
 [features]
 default = []
@@ -30,3 +47,4 @@ utoipa = ["dep:utoipa"]
 tokio = { version = "1.37", features = ["macros", "rt-multi-thread"] }
 serial_test = "3.2"
 trybuild = "1.0"
+tempfile = "3.14"

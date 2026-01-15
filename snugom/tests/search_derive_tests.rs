@@ -16,14 +16,14 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use snugom::search::{IndexFieldType, SearchEntity, SortOrder};
-use snugom::{SnugomEntity, bundle};
+use snugom::SnugomEntity;
 
 // =============================================================================
 // Test Entities - Numeric Fields (Entries 1-15)
 // =============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "test", collection = "numeric_items")]
 pub struct NumericEntity {
     #[snugom(id)]
     pub id: String,
@@ -58,7 +58,7 @@ pub struct NumericEntity {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "test", collection = "optional_numeric_items")]
 pub struct OptionalNumericEntity {
     #[snugom(id)]
     pub id: String,
@@ -85,7 +85,7 @@ pub struct OptionalNumericEntity {
 // =============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "test", collection = "boolean_items")]
 pub struct BooleanEntity {
     #[snugom(id)]
     pub id: String,
@@ -131,7 +131,7 @@ pub enum Priority {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "test", collection = "enum_items")]
 pub struct EnumEntity {
     #[snugom(id)]
     pub id: String,
@@ -162,7 +162,7 @@ pub struct EnumEntity {
 // =============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "test", collection = "text_search_items")]
 pub struct TextSearchEntity {
     #[snugom(id)]
     pub id: String,
@@ -193,7 +193,7 @@ pub struct TextSearchEntity {
 // =============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "test", collection = "tag_string_items")]
 pub struct TagStringEntity {
     #[snugom(id)]
     pub id: String,
@@ -224,45 +224,45 @@ pub struct TagStringEntity {
 // =============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(version = 1, default_sort = "-created_at")]
+#[snugom(schema = 1, service = "test", collection = "datetime_items", default_sort = "-created_at")]
 pub struct DateTimeEntity {
     #[snugom(id)]
     pub id: String,
 
     /// Entry 40: Filter by date range
-    #[snugom(datetime(epoch_millis), filterable)]
+    #[snugom(datetime, filterable)]
     pub expires_at: DateTime<Utc>,
 
     /// Entry 41: Sort by date
-    #[snugom(datetime(epoch_millis), sortable)]
+    #[snugom(datetime, sortable)]
     pub scheduled_at: DateTime<Utc>,
 
     /// Entry 42: Filter + sort date
-    #[snugom(datetime(epoch_millis), filterable, sortable)]
+    #[snugom(datetime, filterable, sortable)]
     pub modified_at: DateTime<Utc>,
 
     /// Entry 43: Auto-created timestamp
-    #[snugom(datetime(epoch_millis), created_at, filterable, sortable)]
+    #[snugom(datetime, created_at, filterable, sortable)]
     pub created_at: DateTime<Utc>,
 
     /// Entry 44: Auto-updated timestamp
-    #[snugom(datetime(epoch_millis), updated_at, filterable, sortable)]
+    #[snugom(datetime, updated_at, filterable, sortable)]
     pub updated_at: DateTime<Utc>,
 
     /// Entry 45: Date with alias
-    #[snugom(datetime(epoch_millis), filterable, alias = "date")]
+    #[snugom(datetime, filterable, alias = "date")]
     pub event_date: DateTime<Utc>,
 
     /// Entry 46: Optional date filter
-    #[snugom(datetime(epoch_millis), filterable)]
+    #[snugom(datetime, filterable)]
     pub published_at: Option<DateTime<Utc>>,
 
     /// Entry 47: Optional date sort
-    #[snugom(datetime(epoch_millis), sortable)]
+    #[snugom(datetime, sortable)]
     pub archived_at: Option<DateTime<Utc>>,
 
     /// Entry 48: Date index only (internal)
-    #[snugom(datetime(epoch_millis), indexed)]
+    #[snugom(datetime, indexed)]
     pub internal_ts: DateTime<Utc>,
 }
 
@@ -271,7 +271,7 @@ pub struct DateTimeEntity {
 // =============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "test", collection = "array_items")]
 pub struct ArrayEntity {
     #[snugom(id)]
     pub id: String,
@@ -294,7 +294,7 @@ pub struct ArrayEntity {
 // =============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "test", collection = "geo_items")]
 pub struct GeoEntity {
     #[snugom(id)]
     pub id: String,
@@ -317,7 +317,7 @@ pub struct GeoEntity {
 // =============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(version = 1, default_sort = "-created_at")]
+#[snugom(schema = 1, service = "test", collection = "combined_items", default_sort = "-created_at")]
 pub struct CombinedEntity {
     #[snugom(id)]
     pub id: String,
@@ -331,7 +331,7 @@ pub struct CombinedEntity {
     pub description: Option<String>,
 
     /// Entry 58-59: Default sort field
-    #[snugom(datetime(epoch_millis), created_at, filterable, sortable)]
+    #[snugom(datetime, created_at, filterable, sortable)]
     pub created_at: DateTime<Utc>,
 
     /// Entry 63: Validate + filter number
@@ -347,7 +347,7 @@ pub struct CombinedEntity {
 
 /// Entity for testing ascending default sort (Entry 59)
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(version = 1, default_sort = "name")]
+#[snugom(schema = 1, service = "test", collection = "asc_sort_items", default_sort = "name")]
 pub struct AscendingSortEntity {
     #[snugom(id)]
     pub id: String,
@@ -356,22 +356,6 @@ pub struct AscendingSortEntity {
     pub name: String,
 }
 
-bundle! {
-    service: "test",
-    entities: {
-        NumericEntity => "numeric_items",
-        OptionalNumericEntity => "optional_numeric_items",
-        BooleanEntity => "boolean_items",
-        EnumEntity => "enum_items",
-        TextSearchEntity => "text_search_items",
-        TagStringEntity => "tag_string_items",
-        DateTimeEntity => "datetime_items",
-        ArrayEntity => "array_items",
-        GeoEntity => "geo_items",
-        CombinedEntity => "combined_items",
-        AscendingSortEntity => "asc_sort_items",
-    }
-}
 
 // =============================================================================
 // UNIT TESTS - Numeric Fields
@@ -1123,7 +1107,7 @@ mod integration_tests {
 
     /// Simple entity for integration testing
     #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-    #[snugom(version = 1, default_sort = "-score")]
+    #[snugom(schema = 1, service = "itest", collection = "items", default_sort = "-score")]
     pub struct IntegrationTestEntity {
         #[snugom(id)]
         pub id: String,
@@ -1140,7 +1124,7 @@ mod integration_tests {
         #[snugom(filterable)]
         pub active: bool,
 
-        #[snugom(datetime(epoch_millis), created_at, filterable, sortable)]
+        #[snugom(datetime, created_at, filterable, sortable)]
         pub created_at: DateTime<Utc>,
     }
 
@@ -1162,29 +1146,17 @@ mod integration_tests {
         // Create test entities
         let now = chrono::Utc::now();
         for i in 1..=5 {
-            let entity = IntegrationTestEntity::validation_builder()
+            let builder = IntegrationTestEntity::validation_builder()
                 .id(format!("item-{i}"))
                 .name(format!("Item {i}"))
                 .score(i * 10)
                 .category("test".to_string())
                 .active(true)
-                .created_at(now)
-                .build()
-                .expect("valid entity");
+                .created_at(now);
 
-            snugom::run! {
-                &repo,
-                &mut conn,
-                create => IntegrationTestEntity {
-                    id: entity.id,
-                    name: entity.name,
-                    score: entity.score,
-                    category: entity.category,
-                    active: entity.active,
-                    created_at: entity.created_at,
-                }
-            }
-            .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder)
+                .await
+                .expect("create should succeed");
         }
 
         // Give Redis time to index
@@ -1236,29 +1208,18 @@ mod integration_tests {
 
         // Create entities with different categories
         for (i, cat) in [(1, "alpha"), (2, "beta"), (3, "alpha"), (4, "gamma"), (5, "alpha")].iter() {
-            let entity = IntegrationTestEntity::validation_builder()
+            let builder = IntegrationTestEntity::validation_builder()
                 .id(format!("item-{i}"))
                 .name(format!("Item {i}"))
                 .score(*i * 10)
                 .category(cat.to_string())
                 .active(true)
                 .created_at(now)
-                .build()
-                .expect("valid entity");
+                ;
 
-            snugom::run! {
-                &repo,
-                &mut conn,
-                create => IntegrationTestEntity {
-                    id: entity.id,
-                    name: entity.name,
-                    score: entity.score,
-                    category: entity.category,
-                    active: entity.active,
-                    created_at: entity.created_at,
-                }
-            }
-            .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder)
+                .await
+                .expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1307,29 +1268,18 @@ mod integration_tests {
 
         // Create entities with different names
         for (i, name) in [(1, "Dragon Slayer"), (2, "Knight Commander"), (3, "Dragon Knight"), (4, "Mage")].iter() {
-            let entity = IntegrationTestEntity::validation_builder()
+            let builder = IntegrationTestEntity::validation_builder()
                 .id(format!("item-{i}"))
                 .name(name.to_string())
                 .score(*i * 10)
                 .category("hero".to_string())
                 .active(true)
                 .created_at(now)
-                .build()
-                .expect("valid entity");
+                ;
 
-            snugom::run! {
-                &repo,
-                &mut conn,
-                create => IntegrationTestEntity {
-                    id: entity.id,
-                    name: entity.name,
-                    score: entity.score,
-                    category: entity.category,
-                    active: entity.active,
-                    created_at: entity.created_at,
-                }
-            }
-            .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder)
+                .await
+                .expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1377,29 +1327,18 @@ mod integration_tests {
 
         // Create entities with different scores
         for i in [3, 1, 5, 2, 4].iter() {
-            let entity = IntegrationTestEntity::validation_builder()
+            let builder = IntegrationTestEntity::validation_builder()
                 .id(format!("item-{i}"))
                 .name(format!("Item {i}"))
                 .score(*i * 10)
                 .category("test".to_string())
                 .active(true)
                 .created_at(now)
-                .build()
-                .expect("valid entity");
+                ;
 
-            snugom::run! {
-                &repo,
-                &mut conn,
-                create => IntegrationTestEntity {
-                    id: entity.id,
-                    name: entity.name,
-                    score: entity.score,
-                    category: entity.category,
-                    active: entity.active,
-                    created_at: entity.created_at,
-                }
-            }
-            .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder)
+                .await
+                .expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1451,29 +1390,18 @@ mod integration_tests {
 
         // Create entities with different active states
         for (i, active) in [(1, true), (2, false), (3, true), (4, false), (5, true)].iter() {
-            let entity = IntegrationTestEntity::validation_builder()
+            let builder = IntegrationTestEntity::validation_builder()
                 .id(format!("item-{i}"))
                 .name(format!("Item {i}"))
                 .score(*i * 10)
                 .category("test".to_string())
                 .active(*active)
                 .created_at(now)
-                .build()
-                .expect("valid entity");
+                ;
 
-            snugom::run! {
-                &repo,
-                &mut conn,
-                create => IntegrationTestEntity {
-                    id: entity.id,
-                    name: entity.name,
-                    score: entity.score,
-                    category: entity.category,
-                    active: entity.active,
-                    created_at: entity.created_at,
-                }
-            }
-            .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder)
+                .await
+                .expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1529,29 +1457,18 @@ mod integration_tests {
         ];
 
         for (i, name, score, cat, active) in test_data.iter() {
-            let entity = IntegrationTestEntity::validation_builder()
+            let builder = IntegrationTestEntity::validation_builder()
                 .id(format!("item-{i}"))
                 .name(name.to_string())
                 .score(*score)
                 .category(cat.to_string())
                 .active(*active)
                 .created_at(now)
-                .build()
-                .expect("valid entity");
+                ;
 
-            snugom::run! {
-                &repo,
-                &mut conn,
-                create => IntegrationTestEntity {
-                    id: entity.id,
-                    name: entity.name,
-                    score: entity.score,
-                    category: entity.category,
-                    active: entity.active,
-                    created_at: entity.created_at,
-                }
-            }
-            .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder)
+                .await
+                .expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1600,29 +1517,18 @@ mod integration_tests {
 
         // Create 10 entities
         for i in 1..=10 {
-            let entity = IntegrationTestEntity::validation_builder()
+            let builder = IntegrationTestEntity::validation_builder()
                 .id(format!("item-{i:02}"))
                 .name(format!("Item {i:02}"))
                 .score(i * 10)
                 .category("test".to_string())
                 .active(true)
                 .created_at(now)
-                .build()
-                .expect("valid entity");
+                ;
 
-            snugom::run! {
-                &repo,
-                &mut conn,
-                create => IntegrationTestEntity {
-                    id: entity.id,
-                    name: entity.name,
-                    score: entity.score,
-                    category: entity.category,
-                    active: entity.active,
-                    created_at: entity.created_at,
-                }
-            }
-            .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder)
+                .await
+                .expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1715,29 +1621,18 @@ mod integration_tests {
         ];
 
         for (i, cat) in test_data.iter() {
-            let entity = IntegrationTestEntity::validation_builder()
+            let builder = IntegrationTestEntity::validation_builder()
                 .id(format!("item-{i}"))
                 .name(format!("Item {i}"))
                 .score(*i * 10)
                 .category(cat.to_string())
                 .active(true)
                 .created_at(now)
-                .build()
-                .expect("valid entity");
+                ;
 
-            snugom::run! {
-                &repo,
-                &mut conn,
-                create => IntegrationTestEntity {
-                    id: entity.id,
-                    name: entity.name,
-                    score: entity.score,
-                    category: entity.category,
-                    active: entity.active,
-                    created_at: entity.created_at,
-                }
-            }
-            .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder)
+                .await
+                .expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1804,29 +1699,18 @@ mod integration_tests {
         ];
 
         for (i, active, cat) in test_data.iter() {
-            let entity = IntegrationTestEntity::validation_builder()
+            let builder = IntegrationTestEntity::validation_builder()
                 .id(format!("item-{i}"))
                 .name(format!("Item {i}"))
                 .score(*i * 10)
                 .category(cat.to_string())
                 .active(*active)
                 .created_at(now)
-                .build()
-                .expect("valid entity");
+                ;
 
-            snugom::run! {
-                &repo,
-                &mut conn,
-                create => IntegrationTestEntity {
-                    id: entity.id,
-                    name: entity.name,
-                    score: entity.score,
-                    category: entity.category,
-                    active: entity.active,
-                    created_at: entity.created_at,
-                }
-            }
-            .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder)
+                .await
+                .expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1894,29 +1778,18 @@ mod integration_tests {
         ];
 
         for (i, active, cat) in test_data.iter() {
-            let entity = IntegrationTestEntity::validation_builder()
+            let builder = IntegrationTestEntity::validation_builder()
                 .id(format!("item-{i}"))
                 .name(format!("Item {i}"))
                 .score(*i * 10)
                 .category(cat.to_string())
                 .active(*active)
                 .created_at(now)
-                .build()
-                .expect("valid entity");
+                ;
 
-            snugom::run! {
-                &repo,
-                &mut conn,
-                create => IntegrationTestEntity {
-                    id: entity.id,
-                    name: entity.name,
-                    score: entity.score,
-                    category: entity.category,
-                    active: entity.active,
-                    created_at: entity.created_at,
-                }
-            }
-            .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder)
+                .await
+                .expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1979,29 +1852,18 @@ mod integration_tests {
         ];
 
         for (i, score, cat) in test_data.iter() {
-            let entity = IntegrationTestEntity::validation_builder()
+            let builder = IntegrationTestEntity::validation_builder()
                 .id(format!("item-{i}"))
                 .name(format!("Item {i}"))
                 .score(*score)
                 .category(cat.to_string())
                 .active(true)
                 .created_at(now)
-                .build()
-                .expect("valid entity");
+                ;
 
-            snugom::run! {
-                &repo,
-                &mut conn,
-                create => IntegrationTestEntity {
-                    id: entity.id,
-                    name: entity.name,
-                    score: entity.score,
-                    category: entity.category,
-                    active: entity.active,
-                    created_at: entity.created_at,
-                }
-            }
-            .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder)
+                .await
+                .expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -2078,29 +1940,18 @@ mod integration_tests {
         ];
 
         for (i, active, cat) in test_data.iter() {
-            let entity = IntegrationTestEntity::validation_builder()
+            let builder = IntegrationTestEntity::validation_builder()
                 .id(format!("item-{i}"))
                 .name(format!("Item {i}"))
                 .score(*i * 10)
                 .category(cat.to_string())
                 .active(*active)
                 .created_at(now)
-                .build()
-                .expect("valid entity");
+                ;
 
-            snugom::run! {
-                &repo,
-                &mut conn,
-                create => IntegrationTestEntity {
-                    id: entity.id,
-                    name: entity.name,
-                    score: entity.score,
-                    category: entity.category,
-                    active: entity.active,
-                    created_at: entity.created_at,
-                }
-            }
-            .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder)
+                .await
+                .expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -2168,29 +2019,18 @@ mod integration_tests {
         ];
 
         for (i, active, cat, score) in test_data.iter() {
-            let entity = IntegrationTestEntity::validation_builder()
+            let builder = IntegrationTestEntity::validation_builder()
                 .id(format!("item-{i}"))
                 .name(format!("Item {i}"))
                 .score(*score)
                 .category(cat.to_string())
                 .active(*active)
                 .created_at(now)
-                .build()
-                .expect("valid entity");
+                ;
 
-            snugom::run! {
-                &repo,
-                &mut conn,
-                create => IntegrationTestEntity {
-                    id: entity.id,
-                    name: entity.name,
-                    score: entity.score,
-                    category: entity.category,
-                    active: entity.active,
-                    created_at: entity.created_at,
-                }
-            }
-            .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder)
+                .await
+                .expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -2237,7 +2077,7 @@ mod integration_tests {
 
     /// Entity with private/owner fields like KV store
     #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-    #[snugom(version = 1)]
+    #[snugom(schema = 1, service = "itest", collection = "visibility_items")]
     pub struct VisibilityTestEntity {
         #[snugom(id)]
         pub id: String,
@@ -2251,16 +2091,8 @@ mod integration_tests {
         #[snugom(filterable(tag))]
         pub owner: String,
 
-        #[snugom(datetime(epoch_millis), created_at)]
+        #[snugom(datetime, created_at)]
         pub created_at: DateTime<Utc>,
-    }
-
-    bundle! {
-        service: "itest",
-        entities: {
-            IntegrationTestEntity => "items",
-            VisibilityTestEntity => "visibility_items",
-        }
     }
 
     #[tokio::test]
@@ -2296,26 +2128,16 @@ mod integration_tests {
         ];
 
         for (i, private, owner) in test_data.iter() {
-            let entity = VisibilityTestEntity {
-                id: format!("item-{i}"),
-                name: format!("Item {i}"),
-                private: *private,
-                owner: owner.to_string(),
-                created_at: now,
-            };
+            let builder = VisibilityTestEntity::validation_builder()
+                .id(format!("item-{i}"))
+                .name(format!("Item {i}"))
+                .private(*private)
+                .owner(owner.to_string())
+                .created_at(now);
 
-            snugom::run! {
-                &repo,
-                &mut conn,
-                create => VisibilityTestEntity {
-                    id: entity.id,
-                    name: entity.name,
-                    private: entity.private,
-                    owner: entity.owner,
-                    created_at: entity.created_at,
-                }
-            }
-            .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder)
+                .await
+                .expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -2385,26 +2207,16 @@ mod integration_tests {
         ];
 
         for (i, name, private, owner) in test_data.iter() {
-            let entity = VisibilityTestEntity {
-                id: format!("item-{i}"),
-                name: name.to_string(),
-                private: *private,
-                owner: owner.to_string(),
-                created_at: now,
-            };
+            let builder = VisibilityTestEntity::validation_builder()
+                .id(format!("item-{i}"))
+                .name(name.to_string())
+                .private(*private)
+                .owner(owner.to_string())
+                .created_at(now);
 
-            snugom::run! {
-                &repo,
-                &mut conn,
-                create => VisibilityTestEntity {
-                    id: entity.id,
-                    name: entity.name,
-                    private: entity.private,
-                    owner: entity.owner,
-                    created_at: entity.created_at,
-                }
-            }
-            .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder)
+                .await
+                .expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;

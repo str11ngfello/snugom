@@ -2,7 +2,7 @@ pub(crate) use chrono::{Duration, Utc};
 pub(crate) use redis::{AsyncCommands, aio::ConnectionManager};
 pub(crate) use serde_json::Value;
 pub(crate) use snugom::{
-    SnugomEntity, bundle,
+    SnugomEntity,
     errors::RepoError,
     id::generate_entity_id,
     repository::{RelationPlan, Repo},
@@ -11,11 +11,11 @@ pub(crate) use snugom::{
 pub(crate) use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(SnugomEntity, serde::Serialize, serde::Deserialize)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "sn", collection = "users")]
 pub(crate) struct UserRecord {
     #[snugom(id)]
     id: String,
-    #[snugom(datetime(epoch_millis), filterable, sortable)]
+    #[snugom(created_at)]
     created_at: chrono::DateTime<Utc>,
     #[snugom(filterable(tag))]
     display_name: String,
@@ -32,15 +32,15 @@ pub(crate) struct UserRecord {
 }
 
 #[derive(SnugomEntity, serde::Serialize, serde::Deserialize)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "sn", collection = "posts")]
 pub(crate) struct PostRecord {
     #[snugom(id)]
     id: String,
-    #[snugom(datetime(epoch_millis), filterable, sortable)]
+    #[snugom(created_at)]
     created_at: chrono::DateTime<Utc>,
     #[snugom(filterable(tag))]
     title: String,
-    #[snugom(datetime(epoch_millis))]
+    #[snugom(datetime)]
     published_at: Option<chrono::DateTime<Utc>>,
     #[snugom(relation(target = "users", cascade = "delete"), filterable(tag))]
     author_id: String,
@@ -54,26 +54,17 @@ pub(crate) struct PostRecord {
 }
 
 #[derive(SnugomEntity, serde::Serialize, serde::Deserialize)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "sn", collection = "comments")]
 pub(crate) struct CommentRecord {
     #[snugom(id)]
     id: String,
-    #[snugom(datetime(epoch_millis), filterable, sortable)]
+    #[snugom(created_at)]
     created_at: chrono::DateTime<Utc>,
     body: String,
     #[snugom(relation(target = "users"), filterable(tag))]
     author_id: String,
     #[snugom(relation(target = "posts", cascade = "delete"), filterable(tag))]
     post_id: String,
-}
-
-bundle! {
-    service: "sn",
-    entities: {
-        UserRecord => "users",
-        PostRecord => "posts",
-        CommentRecord => "comments",
-    }
 }
 
 pub(crate) static TEST_NAMESPACE_COUNTER: AtomicUsize = AtomicUsize::new(0);

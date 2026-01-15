@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use snugom::SnugomEntity;
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(version = 1)]
+#[snugom(schema = 1)]
 pub struct InvalidEntity {
     #[snugom(id)]
     pub id: String,

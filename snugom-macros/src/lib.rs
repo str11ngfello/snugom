@@ -8,13 +8,17 @@ use syn::{
     parse::ParseStream, parse_macro_input, spanned::Spanned,
 };
 
-mod bundle_macro;
+mod client_macro;
+mod client_ops_macro;
 mod filters;
 mod parsed;
-mod run_macro;
 mod snug_macro;
 
-use bundle_macro::BundleInvocation;
+use client_macro::ParsedClient;
+use client_ops_macro::{
+    ClientCreateInvocation, ClientDeleteInvocation, ClientGetOrCreateInvocation,
+    ClientUpdateInvocation, ClientUpsertInvocation,
+};
 use parsed::ParsedEntity;
 use snug_macro::SnugInvocation;
 
@@ -28,17 +32,38 @@ pub fn derive_snugom_entity(input: TokenStream) -> TokenStream {
     }
 }
 
-#[proc_macro]
-pub fn snug(input: TokenStream) -> TokenStream {
-    match parse_macro_input!(input as SnugInvocation).emit() {
-        Ok(tokens) => tokens.into(),
+/// Derive macro for generating a Prisma-style Snugom client.
+///
+/// This macro generates named collection accessor methods for each entity type.
+///
+/// # Example
+///
+/// ```ignore
+/// #[derive(SnugomClient)]
+/// #[snugom_client(entities = [Guild, GuildMember, Role])]
+/// pub struct GuildClient {
+///     conn: ConnectionManager,
+///     prefix: String,
+/// }
+///
+/// // Usage:
+/// let client = GuildClient::connect("redis://localhost", "myapp").await?;
+/// let guild = client.guilds().get(&id).await?;
+/// let members = client.guild_members().find_many(query).await?;
+/// ```
+#[proc_macro_derive(SnugomClient, attributes(snugom_client))]
+pub fn derive_snugom_client(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    match ParsedClient::from_input(&input) {
+        Ok(parsed) => parsed.emit().into(),
         Err(err) => err.to_compile_error().into(),
     }
 }
 
 #[proc_macro]
-pub fn run(input: TokenStream) -> TokenStream {
-    match parse_macro_input!(input as run_macro::RunInvocation).emit() {
+pub fn snug(input: TokenStream) -> TokenStream {
+    match parse_macro_input!(input as SnugInvocation).emit() {
         Ok(tokens) => tokens.into(),
         Err(err) => err.to_compile_error().into(),
     }
@@ -49,38 +74,118 @@ pub fn searchable_filters_derive(input: TokenStream) -> TokenStream {
     filters::derive_searchable_filters(input)
 }
 
-/// Register entities with a service bundle.
+/// Create an entity using a client.
 ///
-/// This macro generates:
-/// - `BundleRegistered` trait implementations for each entity
-/// - Type aliases for repos (e.g., `GuildRepo`)
-/// - Key pattern functions (e.g., `all_pattern()`, `guilds_pattern()`)
-/// - `ensure_indexes()` function to initialize all search indexes at boot time
-/// - `cleanup()` function for test cleanup
-///
-/// All entities in a bundle must have at least one indexed field (filterable or sortable).
-/// This is validated at compile time with a clear error message.
+/// This is a convenience macro for creating entities with nested relations
+/// using the Prisma-style client API.
 ///
 /// # Example
 ///
-/// ```text
-/// bundle! {
-///     service: "guild",
-///     entities: {
-///         Guild,
-///         GuildMember,
-///         GuildApplication => "apps",  // Override auto-pluralization
-///     }
-/// }
-///
-/// // Generated:
-/// // - guild::GuildRepo, guild::GuildMemberRepo, guild::GuildApplicationRepo
-/// // - guild::all_pattern(prefix), guild::guilds_pattern(prefix), etc.
-/// // - guild::ensure_indexes(conn, prefix) - call at boot time
-/// // - guild::cleanup(conn, prefix)
+/// ```ignore
+/// snugom_create!(client, Guild {
+///     name: "Knights",
+///     members: [
+///         create GuildMember { user_id: "u1", role: Role::Leader },
+///     ],
+/// }).await?;
 /// ```
 #[proc_macro]
-pub fn bundle(input: TokenStream) -> TokenStream {
-    let invocation = parse_macro_input!(input as BundleInvocation);
-    invocation.emit().into()
+pub fn snugom_create(input: TokenStream) -> TokenStream {
+    let invocation = parse_macro_input!(input as ClientCreateInvocation);
+    match invocation.emit() {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+/// Update an entity using a client.
+///
+/// # Example
+///
+/// ```ignore
+/// snugom_update!(client, Guild(entity_id = &id) {
+///     name: "New Name",
+/// }).await?;
+/// ```
+#[proc_macro]
+pub fn snugom_update(input: TokenStream) -> TokenStream {
+    let invocation = parse_macro_input!(input as ClientUpdateInvocation);
+    match invocation.emit() {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+/// Delete an entity using a client with optional cascade.
+///
+/// # Example
+///
+/// ```ignore
+/// // Simple delete
+/// snugom_delete!(client, Guild(&guild_id)).await?;
+///
+/// // Delete with cascade
+/// snugom_delete!(client, Guild(&guild_id) {
+///     members: cascade,
+///     applications: cascade,
+/// }).await?;
+/// ```
+#[proc_macro]
+pub fn snugom_delete(input: TokenStream) -> TokenStream {
+    let invocation = parse_macro_input!(input as ClientDeleteInvocation);
+    match invocation.emit() {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+/// Upsert an entity using a client.
+///
+/// # Example
+///
+/// ```ignore
+/// snugom_upsert!(client, Guild(id = &guild_id) {
+///     create: Guild {
+///         name: "New Guild",
+///         member_count: 1,
+///     },
+///     update: Guild(entity_id = &guild_id) {
+///         member_count: member_count + 1,
+///     },
+/// }).await?;
+/// ```
+#[proc_macro]
+pub fn snugom_upsert(input: TokenStream) -> TokenStream {
+    let invocation = parse_macro_input!(input as ClientUpsertInvocation);
+    match invocation.emit() {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+/// Get or create an entity using a client.
+///
+/// Returns the existing entity if it exists, or creates and returns a new one.
+/// Unlike `upsert`, this does NOT update the entity if it already exists.
+///
+/// # Example
+///
+/// ```ignore
+/// let result = snugom_get_or_create!(client, UserSettings {
+///     id: user_settings_id,
+///     user_id: user_id.to_string(),
+///     theme: "light".to_string(),
+///     notifications_enabled: true,
+/// }).await?;
+///
+/// // result is GetOrCreateResult<UserSettings>
+/// let settings = result.into_inner();
+/// ```
+#[proc_macro]
+pub fn snugom_get_or_create(input: TokenStream) -> TokenStream {
+    let invocation = parse_macro_input!(input as ClientGetOrCreateInvocation);
+    match invocation.emit() {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
 }

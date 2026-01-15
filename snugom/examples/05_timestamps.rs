@@ -1,6 +1,6 @@
-use snugom::examples::example05_timestamps;
+use snugom::examples::repo::ex05_timestamps;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    example05_timestamps::run().await
+    ex05_timestamps::run().await
 }

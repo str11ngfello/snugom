@@ -810,7 +810,7 @@ struct GuildMember {
     #[snugom(filterable(tag))]
     role: String,
 
-    #[snugom(datetime(epoch_millis), sortable)]
+    #[snugom(datetime, sortable)]
     joined_at: DateTime<Utc>,
 }
 

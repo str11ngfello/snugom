@@ -4,10 +4,9 @@
 
 extern crate self as snugom;
 
-/// Compile-time validation that all relation targets exist in the bundle's collections.
+/// Compile-time validation that all relation targets exist in the registered collections.
 ///
-/// This function is called from the generated `bundle!` macro code to ensure
-/// that all relation targets reference valid collections at compile time.
+/// This function can be used for compile-time validation of relation targets.
 ///
 /// # Panics
 ///
@@ -59,16 +58,16 @@ const fn const_panic_invalid_target(entity_name: &str, target: &str, valid_colle
     // The entity_name, target, and valid_collections are passed for future use
     // when Rust supports better const panic formatting
     panic!(
-        "Invalid relation target in entity. The target collection is not registered in this bundle. \
-            Check that the relation's target matches a collection name in the bundle! macro, \
+        "Invalid relation target in entity. The target collection is not registered. \
+            Check that the relation's target matches a collection name, \
             or add an explicit `target = \"collection_name\"` to the relation attribute."
     )
 }
 
 /// Compile-time validation that an entity has at least one indexed field.
 ///
-/// Entities used in bundles must have at least one filterable or sortable field
-/// to support search operations. This validation is called from the bundle! macro.
+/// Entities must have at least one filterable or sortable field
+/// to support search operations.
 ///
 /// # Panics
 ///
@@ -77,13 +76,14 @@ const fn const_panic_invalid_target(entity_name: &str, target: &str, valid_colle
 pub const fn validate_entity_has_indexed_fields(entity_name: &str, has_indexed_fields: bool) {
     if !has_indexed_fields {
         panic!(
-            "Entity has no indexed fields. All entities in a bundle must have at least one \
+            "Entity has no indexed fields. Entities must have at least one \
              field marked with #[snugom(filterable)] or #[snugom(sortable)]. \
-             Consider adding a 'created_at' field with #[snugom(datetime(epoch_millis), filterable, sortable)]."
+             Consider adding a 'created_at' field with #[snugom(created_at)]."
         );
     }
 }
 
+pub mod client;
 pub mod errors;
 pub mod examples;
 pub mod filters;
@@ -98,16 +98,26 @@ pub mod validators;
 
 pub mod macros;
 
+pub use client::{BulkCreateResult, Client, CollectionHandle, EntityRegistration};
 pub use errors::*;
 pub use registry::*;
 pub use repository::*;
-pub use snugom_macros::{SearchableFilters, SnugomEntity, bundle, run, snug};
+pub use snugom_macros::{
+    SearchableFilters, SnugomClient, SnugomEntity, snug, snugom_create, snugom_delete,
+    snugom_get_or_create, snugom_update, snugom_upsert,
+};
+pub use search::{SearchQuery, SortOrder};
 pub use types::{
-    BundleRegistered, DEFAULT_RELATION_LIMIT, MAX_RELATION_LIMIT, RelationData, RelationQueryOptions, RelationState,
-    SortOrder,
+    DEFAULT_RELATION_LIMIT, MAX_RELATION_LIMIT, RelationData, RelationQueryOptions, RelationState,
+    SnugomModel,
 };
 
-use redis::aio::ConnectionManager;
+// Re-export redis types so users don't need to depend on a specific redis version
+pub use redis;
+pub use redis::aio::ConnectionManager;
+
+// Re-export inventory for auto-registration in entity derive macro
+pub use inventory;
 
 /// Delete all keys matching a pattern (for test cleanup).
 ///

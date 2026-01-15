@@ -8,8 +8,10 @@ use crate::{
     runtime::{
         commands::{MutationCommand, MutationPlan},
         scripts::{
-            ENTITY_DELETE_SCRIPT, ENTITY_DELETE_SCRIPT_BODY, ENTITY_MUTATION_SCRIPT, ENTITY_MUTATION_SCRIPT_BODY,
-            ENTITY_PATCH_SCRIPT, ENTITY_PATCH_SCRIPT_BODY, RELATION_MUTATION_SCRIPT, RELATION_MUTATION_SCRIPT_BODY,
+            ENTITY_DELETE_SCRIPT, ENTITY_DELETE_SCRIPT_BODY, ENTITY_GET_OR_CREATE_SCRIPT,
+            ENTITY_GET_OR_CREATE_SCRIPT_BODY, ENTITY_MUTATION_SCRIPT, ENTITY_MUTATION_SCRIPT_BODY,
+            ENTITY_PATCH_SCRIPT, ENTITY_PATCH_SCRIPT_BODY, ENTITY_UPSERT_SCRIPT, ENTITY_UPSERT_SCRIPT_BODY,
+            RELATION_MUTATION_SCRIPT, RELATION_MUTATION_SCRIPT_BODY,
         },
     },
 };
@@ -26,6 +28,8 @@ where
             MutationCommand::PatchEntity(_) => (&*ENTITY_PATCH_SCRIPT, ENTITY_PATCH_SCRIPT_BODY),
             MutationCommand::DeleteEntity(_) => (&*ENTITY_DELETE_SCRIPT, ENTITY_DELETE_SCRIPT_BODY),
             MutationCommand::MutateRelations(_) => (&*RELATION_MUTATION_SCRIPT, RELATION_MUTATION_SCRIPT_BODY),
+            MutationCommand::Upsert(_) => (&*ENTITY_UPSERT_SCRIPT, ENTITY_UPSERT_SCRIPT_BODY),
+            MutationCommand::GetOrCreate(_) => (&*ENTITY_GET_OR_CREATE_SCRIPT, ENTITY_GET_OR_CREATE_SCRIPT_BODY),
         };
 
         let payload = serde_json::to_string(command).map_err(|err| RepoError::Other {

@@ -1,6 +1,6 @@
-use snugom::examples::example99_social_network;
+use snugom::examples::client::social_network::tour;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    example99_social_network::run().await
+    tour::run().await
 }

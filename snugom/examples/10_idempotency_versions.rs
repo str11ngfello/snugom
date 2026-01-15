@@ -1,6 +1,6 @@
-use snugom::examples::example10_idempotency_versions;
+use snugom::examples::repo::ex10_idempotency;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    example10_idempotency_versions::run().await
+    ex10_idempotency::run().await
 }

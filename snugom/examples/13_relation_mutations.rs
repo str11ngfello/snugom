@@ -1,6 +1,6 @@
-use snugom::examples::example13_relation_mutations;
+use snugom::examples::repo::ex11_relation_mutations;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    example13_relation_mutations::run().await
+    ex11_relation_mutations::run().await
 }

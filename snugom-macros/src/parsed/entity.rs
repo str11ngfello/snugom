@@ -13,6 +13,10 @@ pub(crate) struct ParsedEntity {
     default_sort: Option<DefaultSortSpec>,
     // Unique constraints from #[snugom(unique_together = [...])]
     unique_together: Vec<UniqueTogetherSpec>,
+    // Optional service/collection for auto-registration (Prisma-style client API)
+    // When present, generates SnugomModel impl and inventory registration
+    service: Option<String>,
+    collection: Option<String>,
 }
 
 /// Specification for entity-level compound unique constraint
@@ -46,14 +50,25 @@ impl ParsedEntity {
         let mut relations = Vec::new();
         let mut default_sort: Option<DefaultSortSpec> = None;
         let mut unique_together: Vec<UniqueTogetherSpec> = Vec::new();
+        let mut service: Option<String> = None;
+        let mut collection: Option<String> = None;
 
         for attr in &input.attrs {
             if attr.path().is_ident("snugom") {
-                Self::parse_container_attr(attr, &mut version, &mut relations, &mut default_sort, &mut unique_together)?;
+                Self::parse_container_attr(
+                    attr,
+                    &mut version,
+                    &mut relations,
+                    &mut default_sort,
+                    &mut unique_together,
+                    &mut service,
+                    &mut collection,
+                )?;
             }
         }
 
-        // service and collection come from bundle! macro via BundleRegistered trait
+        // service and collection can now optionally come from the derive macro
+        // When present, auto-registration via inventory is enabled
 
         let fields = match &input.data {
             Data::Struct(data) => match &data.fields {
@@ -102,6 +117,8 @@ impl ParsedEntity {
             derived_id,
             default_sort,
             unique_together,
+            service,
+            collection,
         })
     }
 
@@ -128,17 +145,23 @@ impl ParsedEntity {
         _relations: &mut Vec<ParsedRelation>,
         default_sort: &mut Option<DefaultSortSpec>,
         unique_together: &mut Vec<UniqueTogetherSpec>,
+        service: &mut Option<String>,
+        collection: &mut Option<String>,
     ) -> Result<()> {
         attr.parse_nested_meta(|meta| {
             if meta.path.is_ident("service") {
-                return Err(meta.error("service is set via bundle! macro, not on the derive"));
+                // Service is now optional for auto-registration
+                let value: LitStr = meta.value()?.parse()?;
+                *service = Some(value.value());
             } else if meta.path.is_ident("collection") {
-                return Err(meta.error("collection is set via bundle! macro, not on the derive"));
+                // Collection is now optional for auto-registration
+                let value: LitStr = meta.value()?.parse()?;
+                *collection = Some(value.value());
             } else if meta.path.is_ident("relationship") {
                 return Err(meta.error(
                     "relationship() is no longer supported; use #[snugom(relation)] on fields instead"
                 ));
-            } else if meta.path.is_ident("version") {
+            } else if meta.path.is_ident("schema") {
                 let value: LitInt = meta.value()?.parse()?;
                 *version = value.base10_parse()?;
             } else if meta.path.is_ident("default_sort") {
@@ -496,7 +519,7 @@ impl ParsedEntity {
         let has_indexed_fields = self.fields.iter().any(|f| f.has_index());
         let search_entity_impl = self.emit_search_entity();
 
-        quote! {
+        let base_impl = quote! {
             #[allow(non_upper_case_globals)]
             static #descriptor_static_ident: ::std::sync::OnceLock<::snugom::types::EntityDescriptor> = ::std::sync::OnceLock::new();
 
@@ -509,8 +532,8 @@ impl ParsedEntity {
                 fn entity_descriptor() -> ::snugom::types::EntityDescriptor {
                     #register_static_ident.call_once(|| {
                         let descriptor = #descriptor_static_ident.get_or_init(|| ::snugom::types::EntityDescriptor {
-                            service: <#name as ::snugom::types::BundleRegistered>::SERVICE.to_string(),
-                            collection: <#name as ::snugom::types::BundleRegistered>::COLLECTION.to_string(),
+                            service: <#name as ::snugom::types::SnugomModel>::SERVICE.to_string(),
+                            collection: <#name as ::snugom::types::SnugomModel>::COLLECTION.to_string(),
                             version: #version,
                             id_field: Some(#id_field_lit.to_string()),
                             relations: vec![#(#relation_inits),*],
@@ -529,7 +552,7 @@ impl ParsedEntity {
             }
 
             impl #name {
-                /// Relation targets for compile-time validation in bundle! macro
+                /// Relation targets for compile-time validation
                 pub const RELATION_TARGETS: &'static [&'static str] = &[#(#relation_targets),*];
 
                 pub fn validate(&self) -> ::snugom::errors::ValidationResult<()> {
@@ -858,6 +881,14 @@ impl ParsedEntity {
             }
 
             #search_entity_impl
+        };
+
+        // Generate SnugomModel impl and inventory registration
+        let auto_registration = self.emit_auto_registration();
+
+        quote! {
+            #base_impl
+            #auto_registration
         }
     }
 
@@ -949,8 +980,8 @@ impl ParsedEntity {
 
             impl ::snugom::search::SearchEntity for #name {
                 fn index_definition(prefix: &str) -> ::snugom::search::IndexDefinition {
-                    let service = <#name as ::snugom::types::BundleRegistered>::SERVICE;
-                    let collection = <#name as ::snugom::types::BundleRegistered>::COLLECTION;
+                    let service = <#name as ::snugom::types::SnugomModel>::SERVICE;
+                    let collection = <#name as ::snugom::types::SnugomModel>::COLLECTION;
                     ::snugom::search::IndexDefinition {
                         name: format!("{}:{}:{}:idx", prefix, service, collection),
                         prefixes: vec![format!("{}:{}:{}:", prefix, service, collection)],
@@ -981,6 +1012,56 @@ impl ParsedEntity {
                             message: format!("Unknown filter field: {}", other),
                         }),
                     }
+                }
+            }
+        }
+    }
+
+    /// Generate auto-registration code for the entity.
+    ///
+    /// This generates:
+    /// 1. `SnugomModel` impl for the entity
+    /// 2. `inventory::submit!` call for `EntityRegistration`
+    ///
+    /// service and collection are required attributes on the entity derive.
+    fn emit_auto_registration(&self) -> TokenStream2 {
+        let name = &self.name;
+        let name_str = name.to_string();
+
+        // Use provided service/collection or derive from entity name
+        let service = self.service.clone().unwrap_or_else(|| {
+            // Default service name: lowercase entity name
+            to_snake_case(&name.to_string())
+        });
+        let collection = self.collection.clone().unwrap_or_else(|| {
+            // Default collection name: pluralized lowercase entity name
+            let snake = to_snake_case(&name.to_string());
+            format!("{}s", snake)
+        });
+
+        let service_lit = LitStr::new(&service, Span::call_site());
+        let collection_lit = LitStr::new(&collection, Span::call_site());
+
+        let id_field = &self.id_field;
+        quote! {
+            // Auto-generated SnugomModel impl
+            impl ::snugom::types::SnugomModel for #name {
+                const SERVICE: &'static str = #service_lit;
+                const COLLECTION: &'static str = #collection_lit;
+
+                fn get_id(&self) -> String {
+                    self.#id_field.clone()
+                }
+            }
+
+            // Auto-registration with inventory for discovery by SnugomClient
+            ::snugom::inventory::submit! {
+                ::snugom::client::EntityRegistration {
+                    type_id: ::std::any::TypeId::of::<#name>(),
+                    type_name: #name_str,
+                    collection_name: #collection_lit,
+                    service_name: #service_lit,
+                    descriptor_fn: || <#name as ::snugom::types::EntityMetadata>::entity_descriptor(),
                 }
             }
         }

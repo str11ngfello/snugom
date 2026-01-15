@@ -11,6 +11,76 @@ pub enum MutationCommand {
     PatchEntity(EntityPatch),
     DeleteEntity(EntityDelete),
     MutateRelations(RelationMutation),
+    Upsert(UpsertCommand),
+    GetOrCreate(GetOrCreateCommand),
+}
+
+/// Upsert command - creates if not exists, updates if exists.
+/// Executed in a single Lua script to avoid race conditions.
+#[derive(Debug, Serialize)]
+pub struct UpsertCommand {
+    /// Key to check for existence (from update clause)
+    pub update_key: String,
+    /// Entity ID from update clause (used for existence check)
+    pub update_entity_id: String,
+    /// Key for create path (may differ from update_key)
+    pub create_key: String,
+    /// Entity ID for create path
+    pub create_entity_id: String,
+    /// Full JSON payload for the create path
+    pub create_payload_json: String,
+    /// Unique constraints to enforce on create
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub create_unique_constraints: Vec<UniqueConstraintCheck>,
+    /// Relations to establish on create
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub create_relations: Vec<RelationMutation>,
+    /// Datetime mirror fields for create
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub datetime_mirrors: Vec<DatetimeMirrorValue>,
+    /// Patch operations for the update path
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub update_operations: Vec<PatchOperationPayload>,
+    /// Unique constraints to enforce on update
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub update_unique_constraints: Vec<UniqueConstraintCheck>,
+    /// Relations to mutate on update
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub update_relations: Vec<RelationMutation>,
+    /// Idempotency key for deduplication
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub idempotency_key: Option<String>,
+    /// TTL for idempotency key in seconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub idempotency_ttl: Option<u64>,
+}
+
+/// GetOrCreate command - returns existing entity or creates new one.
+/// Executed in a single Lua script to avoid race conditions.
+/// Unlike upsert, this does NOT update the entity if it exists.
+#[derive(Debug, Serialize)]
+pub struct GetOrCreateCommand {
+    /// Key to check for existence and create at
+    pub entity_key: String,
+    /// Entity ID
+    pub entity_id: String,
+    /// Full JSON payload for the create path
+    pub create_payload_json: String,
+    /// Unique constraints to enforce on create
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unique_constraints: Vec<UniqueConstraintCheck>,
+    /// Relations to establish on create
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub relations: Vec<RelationMutation>,
+    /// Datetime mirror fields for create
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub datetime_mirrors: Vec<DatetimeMirrorValue>,
+    /// Idempotency key for deduplication
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub idempotency_key: Option<String>,
+    /// TTL for idempotency key in seconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub idempotency_ttl: Option<u64>,
 }
 
 /// Represents a unique constraint check to be enforced by the Lua script.
@@ -227,7 +297,7 @@ pub fn build_entity_mutation(
 }
 
 /// Extracts values for unique constraint fields from the payload.
-fn build_unique_constraint_checks(
+pub fn build_unique_constraint_checks(
     descriptor: &EntityDescriptor,
     payload: &serde_json::Value,
 ) -> Vec<UniqueConstraintCheck> {

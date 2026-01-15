@@ -1,0 +1,14 @@
+[package]
+name = "snugom-build"
+version = "0.1.0"
+edition = "2024"
+description = "Build-time code generator for SnugomClient"
+license = "MIT"
+
+[dependencies]
+syn = { version = "2", features = ["full", "parsing", "visit"] }
+quote = "1"
+proc-macro2 = "1"
+walkdir = "2"
+anyhow = "1"
+prettyplease = "0.2"

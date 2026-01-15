@@ -1,5 +1,0 @@
-error: collection is set via bundle! macro, not on the derive
- --> tests/ui/collection_on_derive.rs:5:10
-  |
-5 | #[snugom(collection = "tests", version = 1)]
-  |          ^^^^^^^^^^
