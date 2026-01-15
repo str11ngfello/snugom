@@ -647,10 +647,6 @@ cargo test -p snugom --lib examples
 cargo test -p snugom --lib example01_hello_entity
 ```
 
-## Future Improvements
-
-[ ] The redis connection is injected into macros as a dependency. It's clean but noise I'd ultimately like to remove. 
-
 ## Contributing
 
 We welcome contributions! Please feel free to submit a pull request.
