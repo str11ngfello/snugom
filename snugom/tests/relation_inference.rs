@@ -4,14 +4,14 @@
 //! field attributes instead of container-level attributes.
 
 use serde::{Deserialize, Serialize};
-use snugom::{bundle, types::EntityMetadata, SnugomEntity};
+use snugom::{types::EntityMetadata, SnugomEntity};
 
 /// Example using belongs_to inference from {entity}_id fields
 mod belongs_to_inference {
     use super::*;
 
     #[derive(SnugomEntity, Serialize, Deserialize)]
-    #[snugom(version = 1)]
+    #[snugom(schema = 1, service = "ri", collection = "organizations")]
     pub struct Organization {
         #[snugom(id)]
         pub id: String,
@@ -20,7 +20,7 @@ mod belongs_to_inference {
     }
 
     #[derive(SnugomEntity, Serialize, Deserialize)]
-    #[snugom(version = 1)]
+    #[snugom(schema = 1, service = "ri", collection = "teams")]
     pub struct Team {
         #[snugom(id)]
         pub id: String,
@@ -33,7 +33,7 @@ mod belongs_to_inference {
     }
 
     #[derive(SnugomEntity, Serialize, Deserialize)]
-    #[snugom(version = 1)]
+    #[snugom(schema = 1, service = "ri", collection = "employees")]
     pub struct Employee {
         #[snugom(id)]
         pub id: String,
@@ -47,15 +47,6 @@ mod belongs_to_inference {
         // Additional foreign key without relation (not all _id fields are relations)
         pub department_id: String,
     }
-
-    bundle! {
-        service: "ri",
-        entities: {
-            Organization => "organizations",
-            Team => "teams",
-            Employee => "employees",
-        }
-    }
 }
 
 /// Example with explicit cascade policy on belongs_to
@@ -63,7 +54,7 @@ mod cascade_policy {
     use super::*;
 
     #[derive(SnugomEntity, Serialize, Deserialize)]
-    #[snugom(version = 1)]
+    #[snugom(schema = 1, service = "cp", collection = "parents")]
     pub struct Parent {
         #[snugom(id)]
         pub id: String,
@@ -72,7 +63,7 @@ mod cascade_policy {
     }
 
     #[derive(SnugomEntity, Serialize, Deserialize)]
-    #[snugom(version = 1)]
+    #[snugom(schema = 1, service = "cp", collection = "children")]
     pub struct Child {
         #[snugom(id)]
         pub id: String,
@@ -83,14 +74,6 @@ mod cascade_policy {
         #[snugom(relation(cascade = "delete"), filterable(tag))]
         pub parent_id: String,
     }
-
-    bundle! {
-        service: "cp",
-        entities: {
-            Parent => "parents",
-            Child => "children",
-        }
-    }
 }
 
 
@@ -99,7 +82,7 @@ mod explicit_target {
     use super::*;
 
     #[derive(SnugomEntity, Serialize, Deserialize)]
-    #[snugom(version = 1)]
+    #[snugom(schema = 1, service = "et", collection = "authors")]
     pub struct Author {
         #[snugom(id)]
         pub id: String,
@@ -108,7 +91,7 @@ mod explicit_target {
     }
 
     #[derive(SnugomEntity, Serialize, Deserialize)]
-    #[snugom(version = 1)]
+    #[snugom(schema = 1, service = "et", collection = "books")]
     pub struct Book {
         #[snugom(id)]
         pub id: String,
@@ -118,14 +101,6 @@ mod explicit_target {
         // Explicit target and alias when naming doesn't follow convention
         #[snugom(relation(target = "authors", alias = "written_by"), filterable(tag))]
         pub author_id: String,
-    }
-
-    bundle! {
-        service: "et",
-        entities: {
-            Author => "authors",
-            Book => "books",
-        }
     }
 }
 

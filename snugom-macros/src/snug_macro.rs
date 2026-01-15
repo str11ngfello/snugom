@@ -1,9 +1,16 @@
 use super::*;
 
-pub(crate) struct SnugInvocation {
-    path: Path,
+pub struct SnugInvocation {
+    pub path: Path,
     options: Option<UpdateOptions>,
     entries: Vec<RelEntry>,
+}
+
+impl SnugInvocation {
+    /// Get the entity type path (e.g., `Guild`)
+    pub fn entity_type(&self) -> &Path {
+        &self.path
+    }
 }
 
 impl SnugInvocation {

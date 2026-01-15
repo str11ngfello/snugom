@@ -9,14 +9,15 @@ use crate::{
     runtime::{
         MutationExecutor, RedisExecutor,
         commands::{
-            CascadeDirective, CascadeRelationSpec, DeleteCascadeRelation, MutationCommand, MutationPlan,
-            RelationMutation, UniqueConstraintCheck, UniqueConstraintDefinition, build_entity_delete,
-            build_entity_mutation, build_entity_patch,
+            CascadeDirective, CascadeRelationSpec, DeleteCascadeRelation, GetOrCreateCommand, MutationCommand,
+            MutationPlan, PatchOperationPayload, PatchOperationType, RelationMutation, UniqueConstraintCheck,
+            UniqueConstraintDefinition, UpsertCommand, build_entity_delete, build_entity_mutation,
+            build_entity_patch, build_unique_constraint_checks,
         },
     },
     search::{self, SearchEntity, SearchParams, SearchQuery, SearchResult},
     types::{
-        BundleRegistered, CascadePolicy, DatetimeMirrorValue, EntityDescriptor, EntityMetadata, FieldDescriptor,
+        SnugomModel, CascadePolicy, DatetimeMirrorValue, EntityDescriptor, EntityMetadata, FieldDescriptor,
         FieldType, RelationKind, ValidationRule, ValidationScope,
     },
     validators::{is_valid_email, is_valid_url, is_valid_uuid},
@@ -41,7 +42,7 @@ pub trait UpdatePatchBuilder {
 
 impl<T> Repo<T>
 where
-    T: BundleRegistered + DeserializeOwned,
+    T: SnugomModel + DeserializeOwned,
 {
     pub async fn get(&self, conn: &mut ConnectionManager, entity_id: &str) -> Result<Option<T>, RepoError> {
         let key = self.entity_key(entity_id);
@@ -57,16 +58,18 @@ where
         }
     }
 
-    pub async fn exists(&self, conn: &mut ConnectionManager, entity_id: &str) -> Result<bool, RepoError> {
-        let key = self.entity_key(entity_id);
-        let exists: i64 = cmd("EXISTS").arg(&key).query_async(conn).await?;
-        Ok(exists == 1)
-    }
-
     pub async fn count(&self, conn: &mut ConnectionManager) -> Result<u64, RepoError> {
         const SCAN_COUNT: usize = 1024;
         let pattern = format!(
             "{}:{}:{}:*",
+            self.prefix, self.descriptor.service, self.descriptor.collection
+        );
+        // Prefix to filter out unique constraint keys
+        // Key format: {prefix}:{service}:{collection}:{fourth_segment}:...
+        // Entity keys have entity_id as fourth segment
+        // Unique constraint keys have "unique" or "unique_compound" as fourth segment
+        let unique_prefix = format!(
+            "{}:{}:{}:unique",
             self.prefix, self.descriptor.service, self.descriptor.collection
         );
         let mut cursor: u64 = 0;
@@ -80,7 +83,12 @@ where
                 .arg(SCAN_COUNT)
                 .query_async(conn)
                 .await?;
-            total += batch.len() as u64;
+            // Filter out unique constraint keys (both :unique: and :unique_compound:)
+            let entity_count = batch
+                .iter()
+                .filter(|key| !key.starts_with(&unique_prefix))
+                .count();
+            total += entity_count as u64;
             cursor = next_cursor;
             if cursor == 0 {
                 break;
@@ -581,6 +589,44 @@ pub enum UpsertResult {
     Updated(Vec<Value>),
 }
 
+/// Result of a get_or_create operation.
+/// Contains the entity and whether it was created or found.
+#[derive(Debug, Clone)]
+pub enum GetOrCreateResult<T> {
+    /// Entity was created (did not exist before)
+    Created(T),
+    /// Entity already existed (returned as-is, no mutation)
+    Found(T),
+}
+
+impl<T> GetOrCreateResult<T> {
+    /// Returns the inner entity regardless of whether it was created or found.
+    pub fn into_inner(self) -> T {
+        match self {
+            Self::Created(entity) => entity,
+            Self::Found(entity) => entity,
+        }
+    }
+
+    /// Returns a reference to the inner entity.
+    pub fn as_inner(&self) -> &T {
+        match self {
+            Self::Created(entity) => entity,
+            Self::Found(entity) => entity,
+        }
+    }
+
+    /// Returns true if the entity was created (did not exist before).
+    pub fn was_created(&self) -> bool {
+        matches!(self, Self::Created(_))
+    }
+
+    /// Returns true if the entity already existed.
+    pub fn was_found(&self) -> bool {
+        matches!(self, Self::Found(_))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct NestedMutation {
     pub alias: String,
@@ -726,7 +772,7 @@ fn apply_derived_id(descriptor: &EntityDescriptor, payload: &mut Value) -> Optio
 
 impl<T> Repo<T>
 where
-    T: BundleRegistered + SearchEntity,
+    T: SnugomModel + SearchEntity,
 {
     /// Ensure the RediSearch index for this repository exists.
     pub async fn ensure_search_index(&self, conn: &mut ConnectionManager) -> Result<(), RepoError> {
@@ -763,7 +809,7 @@ where
 
 pub struct Repo<T>
 where
-    T: BundleRegistered,
+    T: SnugomModel,
 {
     descriptor: EntityDescriptor,
     prefix: String,
@@ -772,7 +818,7 @@ where
 
 impl<T> Repo<T>
 where
-    T: BundleRegistered,
+    T: SnugomModel,
 {
     pub fn new(prefix: impl Into<String>) -> Self {
         T::ensure_registered();
@@ -791,8 +837,27 @@ where
         KeyContext::new(&self.prefix, &self.descriptor.service)
     }
 
+    /// Check if an entity with the given ID exists.
+    pub async fn exists(&self, conn: &mut ConnectionManager, entity_id: &str) -> Result<bool, RepoError> {
+        let key = self.entity_key(entity_id);
+        let exists: i64 = cmd("EXISTS").arg(&key).query_async(conn).await?;
+        Ok(exists == 1)
+    }
+
     pub fn entity_key(&self, entity_id: &str) -> String {
         self.key_context().entity(&self.descriptor.collection, entity_id)
+    }
+
+    /// Returns a glob pattern matching all entities in this collection.
+    /// Useful for test cleanup or batch operations.
+    pub fn collection_pattern(&self) -> String {
+        self.key_context().collection_pattern(&self.descriptor.collection)
+    }
+
+    /// Returns a glob pattern matching all keys in this service.
+    /// Useful for test cleanup of all service data (entities + auxiliary keys).
+    pub fn service_pattern(&self) -> String {
+        self.key_context().service_pattern()
     }
 
     pub fn relation_key(&self, alias: &str, left_id: &str) -> String {
@@ -826,6 +891,66 @@ where
             idempotency_ttl,
             managed_overrides,
         } = builder.into_payload()?;
+        let overrides: ::std::collections::BTreeSet<_> = managed_overrides.into_iter().collect();
+        let mut mirrors = mirrors;
+        ensure_auto_timestamps(self.descriptor(), &mut payload, &mut mirrors, &overrides, false);
+        ensure_metadata_object(&mut payload);
+        inject_enum_tag_shadows(self.descriptor(), &mut payload);
+        if let Some(derived_id) = apply_derived_id(self.descriptor(), &mut payload) {
+            entity_id = derived_id;
+        }
+        if let Err(err) = validate_entity_json(self.descriptor(), &payload) {
+            return Err(RepoError::Validation(err));
+        }
+        let mut nested = nested;
+        link_nested_to_parent(self.descriptor(), &entity_id, &mut nested);
+        self.execute_nested(executor, nested).await?;
+        let key = self.entity_key(&entity_id);
+        let key_context = self.key_context();
+        let (relation_mutations, pending_deletes) =
+            Self::relation_mutations_for(self.descriptor(), &key_context, Some(&entity_id), relations)?;
+        let mut plan = MutationPlan::new();
+        let mutation = build_entity_mutation(
+            self.descriptor(),
+            key,
+            payload,
+            mirrors,
+            None,
+            idempotency_key,
+            idempotency_ttl,
+            relation_mutations,
+        )?;
+        plan.push(MutationCommand::UpsertEntity(mutation));
+        Self::enqueue_relation_deletes_for_context(&key_context, self.descriptor(), pending_deletes, &mut plan)?;
+        let responses = self.execute(executor, plan).await?;
+        if let Some(actual_id) = responses
+            .last()
+            .and_then(|value| value.get("entity_id"))
+            .and_then(|value| value.as_str())
+        {
+            entity_id = actual_id.to_string();
+        }
+        Ok(CreateResult {
+            id: entity_id,
+            responses,
+        })
+    }
+
+    /// Internal method to create from an already-validated payload.
+    async fn create_from_payload<E>(&self, executor: &mut E, payload: MutationPayload) -> Result<CreateResult, RepoError>
+    where
+        E: MutationExecutor + ?Sized,
+    {
+        let MutationPayload {
+            mut entity_id,
+            mut payload,
+            mirrors,
+            relations,
+            nested,
+            idempotency_key,
+            idempotency_ttl,
+            managed_overrides,
+        } = payload;
         let overrides: ::std::collections::BTreeSet<_> = managed_overrides.into_iter().collect();
         let mut mirrors = mirrors;
         ensure_auto_timestamps(self.descriptor(), &mut payload, &mut mirrors, &overrides, false);
@@ -1042,13 +1167,453 @@ where
         self.execute(executor, plan).await
     }
 
+    /// Create an entity, failing if it already exists.
+    ///
+    /// Returns `RepoError::AlreadyExists` if an entity with the same ID exists.
+    /// Use the `upsert` operation if you want create-or-update semantics.
     pub async fn create_with_conn<B>(&self, conn: &mut ConnectionManager, builder: B) -> Result<CreateResult, RepoError>
     where
         B: MutationPayloadBuilder,
         B::Entity: EntityMetadata,
     {
+        // Convert builder to payload to get the entity_id for existence check
+        let payload = builder.into_payload()?;
+        let entity_id = &payload.entity_id;
+
+        // Check if entity already exists
+        if self.exists(conn, entity_id).await? {
+            return Err(RepoError::AlreadyExists {
+                entity_id: entity_id.clone(),
+            });
+        }
+
+        // Proceed with create
         let mut executor = RedisExecutor::new(conn);
-        self.create(&mut executor, builder).await
+        self.create_from_payload(&mut executor, payload).await
+    }
+
+    /// Create an entity and return the full entity (Prisma-style).
+    ///
+    /// This is a convenience method that creates the entity and then fetches it.
+    /// Use this when you need the full entity back after creation.
+    /// For better performance when you only need the ID, use `create_with_conn`.
+    pub async fn create_and_get<B>(&self, conn: &mut ConnectionManager, builder: B) -> Result<T, RepoError>
+    where
+        B: MutationPayloadBuilder,
+        B::Entity: EntityMetadata,
+        T: DeserializeOwned,
+    {
+        let result = self.create_with_conn(conn, builder).await?;
+        self.get(conn, &result.id)
+            .await?
+            .ok_or(RepoError::NotFound {
+                entity_id: Some(result.id),
+            })
+    }
+
+    /// Upsert: creates if entity doesn't exist, updates if it does.
+    ///
+    /// This operation is atomic - the existence check and mutation happen in a single
+    /// Redis Lua script call, preventing race conditions.
+    ///
+    /// Returns `UpsertResult::Created` if a new entity was created, or
+    /// `UpsertResult::Updated` if an existing entity was updated.
+    pub async fn upsert<C, U>(
+        &self,
+        conn: &mut ConnectionManager,
+        create_builder: C,
+        update_builder: U,
+    ) -> Result<UpsertResult, RepoError>
+    where
+        C: MutationPayloadBuilder,
+        C::Entity: EntityMetadata,
+        U: UpdatePatchBuilder,
+        U::Entity: EntityMetadata,
+        T: EntityMetadata + Serialize + DeserializeOwned,
+    {
+        // Process the create payload
+        let create_payload = create_builder.into_payload()?;
+        let entity_id = create_payload.entity_id.clone();
+
+        // Process update patch
+        let update_patch = update_builder.into_patch()?;
+
+        // Build the upsert command
+        let command = self
+            .build_upsert_command(create_payload, update_patch)
+            .await?;
+
+        // Execute the command
+        let mut plan = MutationPlan::new();
+        plan.push(MutationCommand::Upsert(command));
+
+        let mut executor = RedisExecutor::new(conn);
+        let responses = self.execute(&mut executor, plan).await?;
+
+        // Parse the response to determine which branch was taken
+        let response = responses.into_iter().next().ok_or(RepoError::Other {
+            message: Cow::Borrowed("upsert returned no response"),
+        })?;
+
+        let branch = response
+            .get("branch")
+            .and_then(|v| v.as_str())
+            .ok_or(RepoError::Other {
+                message: Cow::Borrowed("upsert response missing 'branch' field"),
+            })?;
+
+        match branch {
+            "created" => {
+                let result_id = response
+                    .get("entity_id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .unwrap_or(entity_id);
+                Ok(UpsertResult::Created(CreateResult {
+                    id: result_id,
+                    responses: vec![response],
+                }))
+            }
+            "updated" => Ok(UpsertResult::Updated(vec![response])),
+            other => Err(RepoError::Other {
+                message: Cow::Owned(format!("unexpected upsert branch: {other}")),
+            }),
+        }
+    }
+
+    /// Build the upsert command from create payload and update patch.
+    async fn build_upsert_command(
+        &self,
+        mut create_payload: MutationPayload,
+        update_patch: MutationPatch,
+    ) -> Result<UpsertCommand, RepoError>
+    where
+        T: EntityMetadata,
+    {
+        // Update uses the entity_id from the update patch (the one we check for existence)
+        let update_entity_id = update_patch.entity_id.clone();
+        let update_key = self.entity_key(&update_entity_id);
+
+        // Create uses the entity_id from the create payload (may be different/auto-generated)
+        let create_entity_id = create_payload.entity_id.clone();
+        let create_key = self.entity_key(&create_entity_id);
+
+        let key_context = self.key_context();
+
+        // Process create payload (timestamps, metadata, validation)
+        let overrides: ::std::collections::BTreeSet<_> =
+            create_payload.managed_overrides.iter().cloned().collect();
+        ensure_auto_timestamps(
+            self.descriptor(),
+            &mut create_payload.payload,
+            &mut create_payload.mirrors,
+            &overrides,
+            false,
+        );
+        ensure_metadata_object(&mut create_payload.payload);
+        inject_enum_tag_shadows(self.descriptor(), &mut create_payload.payload);
+
+        // Validate create payload
+        if let Err(err) = validate_entity_json(self.descriptor(), &create_payload.payload) {
+            return Err(RepoError::Validation(err));
+        }
+
+        // Serialize create payload
+        let create_payload_json = serde_json::to_string(&create_payload.payload).map_err(|err| {
+            RepoError::Other {
+                message: Cow::Owned(format!("failed to serialize create payload: {err}")),
+            }
+        })?;
+
+        // Build create unique constraints
+        let create_unique_constraints = build_unique_constraint_checks(
+            self.descriptor(),
+            &create_payload.payload,
+        );
+
+        // Build create relations (use create entity_id)
+        let (create_relations, _) = Self::relation_mutations_for(
+            self.descriptor(),
+            &key_context,
+            Some(&create_entity_id),
+            create_payload.relations,
+        )?;
+
+        // Build update operations
+        let update_operations = self.build_update_operations(&update_patch)?;
+
+        // Build update unique constraints from patch operations
+        let update_unique_constraints =
+            self.build_update_unique_constraints(&update_patch.operations);
+
+        // Build update relations (use update entity_id)
+        let (update_relations, _) = Self::relation_mutations_for(
+            self.descriptor(),
+            &key_context,
+            Some(&update_entity_id),
+            update_patch.relations,
+        )?;
+
+        // Get idempotency from either payload (prefer create's)
+        let idempotency_key = create_payload
+            .idempotency_key
+            .or(update_patch.idempotency_key);
+        let idempotency_ttl = create_payload
+            .idempotency_ttl
+            .or(update_patch.idempotency_ttl);
+
+        Ok(UpsertCommand {
+            update_key,
+            update_entity_id,
+            create_key,
+            create_entity_id,
+            create_payload_json,
+            create_unique_constraints,
+            create_relations,
+            datetime_mirrors: create_payload.mirrors,
+            update_operations,
+            update_unique_constraints,
+            update_relations,
+            idempotency_key,
+            idempotency_ttl,
+        })
+    }
+
+    /// Atomically gets an existing entity or creates it if it doesn't exist.
+    ///
+    /// This operation is atomic - the existence check and create happen in a single
+    /// Redis Lua script call, preventing race conditions.
+    ///
+    /// Unlike `upsert`, if the entity exists it is returned as-is without modification.
+    ///
+    /// Returns `GetOrCreateResult::Created(entity)` if a new entity was created, or
+    /// `GetOrCreateResult::Found(entity)` if an existing entity was returned.
+    pub async fn get_or_create<C>(
+        &self,
+        conn: &mut ConnectionManager,
+        create_builder: C,
+    ) -> Result<GetOrCreateResult<T>, RepoError>
+    where
+        C: MutationPayloadBuilder,
+        C::Entity: EntityMetadata,
+        T: EntityMetadata + Serialize + DeserializeOwned,
+    {
+        // Process the create payload
+        let create_payload = create_builder.into_payload()?;
+
+        // Build the get_or_create command
+        let command = self.build_get_or_create_command(create_payload).await?;
+
+        // Execute the command
+        let mut plan = MutationPlan::new();
+        plan.push(MutationCommand::GetOrCreate(command));
+
+        let mut executor = RedisExecutor::new(conn);
+        let responses = self.execute(&mut executor, plan).await?;
+
+        // Parse the response
+        let response = responses.into_iter().next().ok_or(RepoError::Other {
+            message: Cow::Borrowed("get_or_create returned no response"),
+        })?;
+
+        let branch = response
+            .get("branch")
+            .and_then(|v| v.as_str())
+            .ok_or(RepoError::Other {
+                message: Cow::Borrowed("get_or_create response missing 'branch' field"),
+            })?;
+
+        // Parse the entity from the response
+        let entity_value = response
+            .get("entity")
+            .ok_or(RepoError::Other {
+                message: Cow::Borrowed("get_or_create response missing 'entity' field"),
+            })?;
+
+        // The entity is returned as an array with single element from JSON.GET with $
+        let entity_json = if let Some(arr) = entity_value.as_array() {
+            arr.first().cloned().unwrap_or(entity_value.clone())
+        } else {
+            entity_value.clone()
+        };
+
+        let entity: T = serde_json::from_value(entity_json).map_err(|err| RepoError::Other {
+            message: Cow::Owned(format!("failed to deserialize entity: {err}")),
+        })?;
+
+        match branch {
+            "created" => Ok(GetOrCreateResult::Created(entity)),
+            "found" => Ok(GetOrCreateResult::Found(entity)),
+            other => Err(RepoError::Other {
+                message: Cow::Owned(format!("unexpected get_or_create branch: {other}")),
+            }),
+        }
+    }
+
+    /// Build the get_or_create command from create payload.
+    async fn build_get_or_create_command(
+        &self,
+        mut create_payload: MutationPayload,
+    ) -> Result<GetOrCreateCommand, RepoError>
+    where
+        T: EntityMetadata,
+    {
+        let entity_id = create_payload.entity_id.clone();
+        let entity_key = self.entity_key(&entity_id);
+        let key_context = self.key_context();
+
+        // Process create payload (timestamps, metadata, validation)
+        let overrides: ::std::collections::BTreeSet<_> =
+            create_payload.managed_overrides.iter().cloned().collect();
+        ensure_auto_timestamps(
+            self.descriptor(),
+            &mut create_payload.payload,
+            &mut create_payload.mirrors,
+            &overrides,
+            false,
+        );
+        ensure_metadata_object(&mut create_payload.payload);
+        inject_enum_tag_shadows(self.descriptor(), &mut create_payload.payload);
+
+        // Validate create payload
+        if let Err(err) = validate_entity_json(self.descriptor(), &create_payload.payload) {
+            return Err(RepoError::Validation(err));
+        }
+
+        // Serialize create payload
+        let create_payload_json = serde_json::to_string(&create_payload.payload).map_err(|err| {
+            RepoError::Other {
+                message: Cow::Owned(format!("failed to serialize create payload: {err}")),
+            }
+        })?;
+
+        // Build unique constraints
+        let unique_constraints = build_unique_constraint_checks(
+            self.descriptor(),
+            &create_payload.payload,
+        );
+
+        // Build relations
+        let (relations, _) = Self::relation_mutations_for(
+            self.descriptor(),
+            &key_context,
+            Some(&entity_id),
+            create_payload.relations,
+        )?;
+
+        Ok(GetOrCreateCommand {
+            entity_key,
+            entity_id,
+            create_payload_json,
+            unique_constraints,
+            relations,
+            datetime_mirrors: create_payload.mirrors,
+            idempotency_key: create_payload.idempotency_key,
+            idempotency_ttl: create_payload.idempotency_ttl,
+        })
+    }
+
+    /// Convert patch operations to the format expected by the Lua script.
+    fn build_update_operations(
+        &self,
+        patch: &MutationPatch,
+    ) -> Result<Vec<PatchOperationPayload>, RepoError>
+    where
+        T: EntityMetadata,
+    {
+        let mut operations = Vec::with_capacity(patch.operations.len());
+
+        for op in &patch.operations {
+            let field_name = op.path.strip_prefix("$.").unwrap_or(op.path.as_str());
+
+            // Validate field exists
+            let _descriptor_field = self
+                .descriptor
+                .fields
+                .iter()
+                .find(|field| field.name == field_name)
+                .ok_or_else(|| {
+                    RepoError::Validation(ValidationError::single(
+                        field_name,
+                        "patch.unknown_field",
+                        format!("field `{field_name}` is not defined on entity"),
+                    ))
+                })?;
+
+            let (op_type, value) = match &op.kind {
+                PatchOpKind::Assign(v) => (PatchOperationType::Assign, Some(v.clone())),
+                PatchOpKind::Merge(v) => (PatchOperationType::Merge, Some(v.clone())),
+                PatchOpKind::Delete => (PatchOperationType::Delete, None),
+            };
+
+            let value_json = value.as_ref().map(|v| {
+                serde_json::to_string(v).expect("serde_json::Value serialization should not fail")
+            });
+
+            let mirror_value_json = op.mirror.as_ref().map(|mirror| {
+                serde_json::to_string(&mirror.value)
+                    .expect("mirror value serialization should not fail")
+            });
+
+            operations.push(PatchOperationPayload {
+                path: op.path.clone(),
+                op_type,
+                value,
+                value_json,
+                mirror: op.mirror.clone(),
+                mirror_value_json,
+            });
+        }
+
+        Ok(operations)
+    }
+
+    /// Build unique constraint checks for update operations.
+    fn build_update_unique_constraints(
+        &self,
+        operations: &[PatchOperation],
+    ) -> Vec<UniqueConstraintCheck> {
+        let mut checks = Vec::new();
+
+        for constraint in &self.descriptor.unique_constraints {
+            // Check if any of the constraint fields are being updated
+            let mut values = Vec::with_capacity(constraint.fields.len());
+            let mut has_update = false;
+
+            for field_name in &constraint.fields {
+                // Find if this field is being updated
+                let path = format!("$.{field_name}");
+                let updated_value = operations.iter().find_map(|op| {
+                    if op.path == path {
+                        match &op.kind {
+                            PatchOpKind::Assign(v) => Some(v.clone()),
+                            PatchOpKind::Merge(v) => Some(v.clone()),
+                            PatchOpKind::Delete => Some(Value::Null),
+                        }
+                    } else {
+                        None
+                    }
+                });
+
+                if let Some(v) = updated_value {
+                    values.push(v);
+                    has_update = true;
+                } else {
+                    // Field not being updated, use null (Lua will read from entity)
+                    values.push(Value::Null);
+                }
+            }
+
+            if has_update {
+                checks.push(UniqueConstraintCheck {
+                    fields: constraint.fields.clone(),
+                    case_insensitive: constraint.case_insensitive,
+                    values,
+                });
+            }
+        }
+
+        checks
     }
 
     pub async fn update_patch_with_conn<B>(
@@ -1121,7 +1686,7 @@ where
 
 impl<T> Repo<T>
 where
-    T: BundleRegistered,
+    T: SnugomModel,
 {
     fn relation_mutations_for(
         descriptor: &EntityDescriptor,

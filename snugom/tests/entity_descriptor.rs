@@ -1,7 +1,7 @@
 use redis::aio::ConnectionManager;
 use serde::{Deserialize, Serialize};
 use snugom::{
-    SnugomEntity, bundle,
+    SnugomEntity,
     repository::Repo,
     runtime::RedisExecutor,
     types::{EntityMetadata, RelationKind, ValidationDescriptor, ValidationRule, ValidationScope},
@@ -9,7 +9,7 @@ use snugom::{
 use tokio::runtime::Runtime;
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "tl", collection = "org")]
 struct Org {
     #[snugom(id)]
     id: String,
@@ -18,7 +18,7 @@ struct Org {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(version = 2)]
+#[snugom(schema = 2, service = "tl", collection = "users")]
 struct UserDescriptor {
     #[snugom(id)]
     id: String,
@@ -50,7 +50,7 @@ fn descriptor_contains_relationships() {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "tl", collection = "articles")]
 struct Article {
     #[snugom(id)]
     id: String,
@@ -116,7 +116,7 @@ async fn redis_conn() -> ConnectionManager {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "cycle", collection = "alpha")]
 struct AlphaEntity {
     #[snugom(id)]
     id: String,
@@ -125,7 +125,7 @@ struct AlphaEntity {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "cycle", collection = "beta")]
 struct BetaEntity {
     #[snugom(id)]
     id: String,
@@ -155,7 +155,7 @@ fn cascade_cycle_is_rejected() {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "depth", collection = "node0")]
 struct DepthNode0 {
     #[snugom(id)]
     id: String,
@@ -164,7 +164,7 @@ struct DepthNode0 {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "depth", collection = "node1")]
 struct DepthNode1 {
     #[snugom(id)]
     id: String,
@@ -173,7 +173,7 @@ struct DepthNode1 {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "depth", collection = "node2")]
 struct DepthNode2 {
     #[snugom(id)]
     id: String,
@@ -182,7 +182,7 @@ struct DepthNode2 {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "depth", collection = "node3")]
 struct DepthNode3 {
     #[snugom(id)]
     id: String,
@@ -191,7 +191,7 @@ struct DepthNode3 {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "depth", collection = "node4")]
 struct DepthNode4 {
     #[snugom(id)]
     id: String,
@@ -200,7 +200,7 @@ struct DepthNode4 {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "depth", collection = "node5")]
 struct DepthNode5 {
     #[snugom(id)]
     id: String,
@@ -209,7 +209,7 @@ struct DepthNode5 {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "depth", collection = "node6")]
 struct DepthNode6 {
     #[snugom(id)]
     id: String,
@@ -218,7 +218,7 @@ struct DepthNode6 {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "depth", collection = "node7")]
 struct DepthNode7 {
     #[snugom(id)]
     id: String,
@@ -227,7 +227,7 @@ struct DepthNode7 {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "depth", collection = "node8")]
 struct DepthNode8 {
     #[snugom(id)]
     id: String,
@@ -236,45 +236,12 @@ struct DepthNode8 {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "depth", collection = "node9")]
 struct DepthNode9 {
     #[snugom(id)]
     id: String,
     #[snugom(relation(target = "node8", cascade = "delete"), filterable(tag))]
     node8_id: String,
-}
-
-bundle! {
-    service: "tl",
-    entities: {
-        Org => "org",
-        UserDescriptor => "users",
-        Article => "articles",
-    }
-}
-
-bundle! {
-    service: "cycle",
-    entities: {
-        AlphaEntity => "alpha",
-        BetaEntity => "beta",
-    }
-}
-
-bundle! {
-    service: "depth",
-    entities: {
-        DepthNode0 => "node0",
-        DepthNode1 => "node1",
-        DepthNode2 => "node2",
-        DepthNode3 => "node3",
-        DepthNode4 => "node4",
-        DepthNode5 => "node5",
-        DepthNode6 => "node6",
-        DepthNode7 => "node7",
-        DepthNode8 => "node8",
-        DepthNode9 => "node9",
-    }
 }
 
 #[test]

@@ -76,21 +76,14 @@ impl ParsedField {
             } else if meta.path.is_ident("validate") {
                 meta.parse_nested_meta(|rule| parse_validation_rule(rule, ty, validations, field_name))?;
             } else if meta.path.is_ident("datetime") {
-                let mut has_epoch = false;
-                meta.parse_nested_meta(|item| {
-                    if item.path.is_ident("epoch_millis") {
-                        has_epoch = true;
-                    }
-                    Ok(())
-                })?;
-                if has_epoch {
-                    if !ty.is_datetime {
-                        return Err(meta.error(
-                            "#[snugom(datetime(...))] requires a chrono::DateTime<Tz> field or Option thereof",
-                        ));
-                    }
-                    *datetime_mirror = Some(format!("{}_ts", field_name));
+                // Creates a numeric mirror field (field_ts) storing epoch milliseconds for sorting/filtering
+                let _ = meta.parse_nested_meta(|_item| Ok(()));
+                if !ty.is_datetime {
+                    return Err(meta.error(
+                        "#[snugom(datetime)] requires a chrono::DateTime<Tz> field or Option thereof",
+                    ));
                 }
+                *datetime_mirror = Some(format!("{}_ts", field_name));
             } else if meta.path.is_ident("id") {
                 if *is_id {
                     return Err(meta.error("field already marked as #[snugom(id)]"));
@@ -214,6 +207,30 @@ impl ParsedField {
                 *index_spec = Some(IndexSpec {
                     field_type: inferred,
                     sortable: true,
+                });
+            }
+        }
+
+        // Auto-configure created_at/updated_at fields with datetime mirror, sortable, and filterable
+        if *auto_created || *auto_updated {
+            // Auto-add datetime mirror if not already set
+            if datetime_mirror.is_none() {
+                *datetime_mirror = Some(format!("{}_ts", field_name));
+            }
+            // Auto-add numeric index with sortable
+            if let Some(idx) = index_spec {
+                idx.sortable = true;
+            } else {
+                *index_spec = Some(IndexSpec {
+                    field_type: IndexFieldType::Numeric,
+                    sortable: true,
+                });
+            }
+            // Auto-add filterable if not already set
+            if filter_spec.is_none() {
+                *filter_spec = Some(FilterSpec {
+                    field_type: FilterFieldType::Numeric,
+                    alias: None,
                 });
             }
         }

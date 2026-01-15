@@ -1,3 +1,4 @@
+use crate::search::SortOrder;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Placeholder metadata structures emitted by the derive macro in later phases.
@@ -111,20 +112,22 @@ pub trait EntityMetadata {
     fn ensure_registered();
 }
 
-/// Marker trait indicating an entity has been registered in a bundle.
-/// This trait is implemented automatically by the `bundle!` macro.
+/// Trait for entities registered with SnugOM.
 ///
-/// Entities must be registered in a bundle before they can be used with `Repo<T>`.
-/// This provides:
-/// - Compile-time enforcement that all entities belong to a service
-/// - Auto-generated key patterns and cleanup functions
-/// - Centralized index initialization
-pub trait BundleRegistered: EntityMetadata {
+/// This trait is automatically implemented by `#[derive(SnugomEntity)]`.
+/// It provides the service and collection names used for Redis key generation.
+pub trait SnugomModel: EntityMetadata {
     /// The service name this entity belongs to
     const SERVICE: &'static str;
 
     /// The collection name for this entity (auto-pluralized from struct name or explicit override)
     const COLLECTION: &'static str;
+
+    /// Get the ID of this entity instance.
+    ///
+    /// This is used by collection operations like `delete_many` that need to extract
+    /// the ID from fetched entities.
+    fn get_id(&self) -> String;
 }
 
 #[derive(Debug, Clone, Default)]
@@ -524,27 +527,6 @@ impl RelationQueryOptions {
                 (s.as_str(), SortOrder::Asc)
             }
         })
-    }
-}
-
-/// Sort order for relation queries
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
-pub enum SortOrder {
-    /// Ascending order (A-Z, 0-9, oldest first)
-    #[default]
-    Asc,
-    /// Descending order (Z-A, 9-0, newest first)
-    Desc,
-}
-
-impl SortOrder {
-    /// Convert to Redis SORTBY direction string
-    pub fn as_redis_dir(&self) -> &'static str {
-        match self {
-            SortOrder::Asc => "ASC",
-            SortOrder::Desc => "DESC",
-        }
     }
 }
 

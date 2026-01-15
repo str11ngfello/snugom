@@ -3,7 +3,7 @@ use redis::{AsyncCommands, aio::ConnectionManager};
 use serde::{Deserialize, Serialize};
 use serde_json::{self, Value};
 use snugom::{
-    SnugomEntity, bundle,
+    SnugomEntity,
     errors::RepoError,
     repository::{RelationPlan, Repo},
     runtime::{
@@ -13,38 +13,24 @@ use snugom::{
 };
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "tl", collection = "articles")]
 struct ArticleRecord {
     #[snugom(id)]
     id: String,
     #[allow(dead_code)]
-    #[snugom(datetime(epoch_millis), filterable, sortable)]
+    #[snugom(datetime, filterable, sortable)]
     published_at: Option<DateTime<Utc>>,
     #[snugom(relation(many_to_many = "articles"))]
     articles_followers_ids: Vec<String>,
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(version = 1)]
+#[snugom(schema = 1, service = "arr", collection = "items")]
 struct ArrayRecord {
     #[snugom(id)]
     id: String,
     #[snugom(filterable(tag))]
     tags: Vec<String>,
-}
-
-bundle! {
-    service: "tl",
-    entities: {
-        ArticleRecord => "articles",
-    }
-}
-
-bundle! {
-    service: "arr",
-    entities: {
-        ArrayRecord => "items",
-    }
 }
 
 async fn redis_connection() -> ConnectionManager {

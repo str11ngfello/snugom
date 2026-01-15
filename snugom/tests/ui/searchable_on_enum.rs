@@ -13,7 +13,7 @@ pub enum Status {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(version = 1)]
+#[snugom(schema = 1)]
 pub struct InvalidEntity {
     #[snugom(id)]
     pub id: String,

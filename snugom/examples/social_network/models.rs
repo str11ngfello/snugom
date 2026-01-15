@@ -3,11 +3,11 @@ use serde::{Deserialize, Serialize};
 use snugom::SnugomEntity;
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(version = 1)]
+#[snugom(schema = 1)]
 pub struct User {
     #[snugom(id)]
     pub id: String,
-    #[snugom(datetime(epoch_millis))]
+    #[snugom(datetime)]
     pub created_at: DateTime<Utc>,
     pub display_name: String,
     pub bio: Option<String>,
@@ -18,11 +18,11 @@ pub struct User {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(version = 1)]
+#[snugom(schema = 1)]
 pub struct Post {
     #[snugom(id)]
     pub id: String,
-    #[snugom(datetime(epoch_millis))]
+    #[snugom(datetime)]
     pub created_at: DateTime<Utc>,
     pub title: String,
     pub body: String,
@@ -33,11 +33,11 @@ pub struct Post {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(version = 1)]
+#[snugom(schema = 1)]
 pub struct Comment {
     #[snugom(id)]
     pub id: String,
-    #[snugom(datetime(epoch_millis))]
+    #[snugom(datetime)]
     pub created_at: DateTime<Utc>,
     pub body: String,
     #[snugom(relation)]

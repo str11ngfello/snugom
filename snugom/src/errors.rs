@@ -33,6 +33,10 @@ pub enum RepoError {
         existing_entity_id: String,
     },
 
+    /// Entity already exists (for strict create operations).
+    #[error("entity already exists: {entity_id}")]
+    AlreadyExists { entity_id: String },
+
     /// Placeholder for other error kinds while the crate is scaffolded.
     #[error("{message}")]
     Other { message: Cow<'static, str> },

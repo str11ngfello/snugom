@@ -14,6 +14,18 @@ impl<'a> KeyContext<'a> {
         format!("{}:{}:{}:{}", self.prefix, self.service, collection, entity_id)
     }
 
+    /// Returns a glob pattern matching all entities in a collection.
+    /// Useful for test cleanup or batch operations.
+    pub fn collection_pattern(&self, collection: &str) -> String {
+        format!("{}:{}:{}:*", self.prefix, self.service, collection)
+    }
+
+    /// Returns a glob pattern matching all keys in this service.
+    /// Useful for test cleanup of all service data (entities + auxiliary keys).
+    pub fn service_pattern(&self) -> String {
+        format!("{}:{}:*", self.prefix, self.service)
+    }
+
     pub fn relation(&self, alias: &str, left_id: &str) -> String {
         format!("{}:{}:rel:{}:{}", self.prefix, self.service, alias, left_id)
     }

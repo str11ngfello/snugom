@@ -1,8 +1,8 @@
 # SnugOM
 
-SnugOM is a Redis-based ORM that takes inspiration from Prisma's wonderful DX. It leverages the advanced search features of Redis 8, adds relational data modeling, atomic mutations, lock free optimistic concurrency control, idempotency keys and more. All functionality is reachable through a set of macros that are compatible with serde and garde. 
+SnugOM is a Redis-based ORM with a focus on developer experience. It leverages the advanced search features of Redis 8, adds relational data modeling, atomic mutations, lock-free optimistic concurrency control, idempotency keys and more. All functionality is reachable through a set of macros that are compatible with serde and garde. 
 
-Define entities with `#[derive(SnugomEntity)]`, and use the `run!` macro for declarative CRUD operations with nested relations, validation, and search. 
+Define entities with `#[derive(SnugomEntity)]`, and use the Prisma-style `SnugomClient` for CRUD operations, or the macro DSL (`snugom_create!`, `snugom_update!`, `snugom_delete!`, `snugom_upsert!`) for complex nested operations with relations, validation, and search. 
 
 ## Table of Contents
 - [SnugOM](#snugom)
@@ -12,12 +12,9 @@ Define entities with `#[derive(SnugomEntity)]`, and use the `run!` macro for dec
   - [Entity Definition](#entity-definition)
     - [Container Attributes](#container-attributes)
     - [Field Attributes](#field-attributes)
-  - [Bundle Registration](#bundle-registration)
-  - [CRUD Operations with `run!`](#crud-operations-with-run)
-    - [Create](#create)
-    - [Get](#get)
-    - [Update](#update)
-    - [Delete](#delete)
+  - [CRUD Operations](#crud-operations)
+    - [Simple CRUD with SnugomClient](#simple-crud-with-snugomclient)
+    - [Complex Nested Operations](#complex-nested-operations)
     - [Relation Mutations](#relation-mutations)
   - [Search, Filter, and Sort](#search-filter-and-sort)
     - [Filter Operators](#filter-operators)
@@ -41,6 +38,7 @@ Define entities with `#[derive(SnugomEntity)]`, and use the `run!` macro for dec
     - [Lower-Level `snug!` Macro](#lower-level-snug-macro)
     - [Direct Repo API](#direct-repo-api)
   - [Redis Setup](#redis-setup)
+  - [Schema Migrations \& CLI](#schema-migrations--cli)
   - [Development](#development)
   - [Examples](#examples)
     - [Running Examples](#running-examples)
@@ -51,11 +49,11 @@ Define entities with `#[derive(SnugomEntity)]`, and use the `run!` macro for dec
 
 ```rust
 use chrono::{DateTime, Utc};
-use snugom::{SnugomEntity, bundle, repository::Repo};
+use snugom::{SnugomClient, SnugomEntity};
 
-// 1. Define your entity
-#[derive(SnugomEntity, serde::Serialize, serde::Deserialize)]
-#[snugom(version = 1, default_sort = "-created_at")]
+// 1. Define your entity with service and collection
+#[derive(SnugomEntity, serde::Serialize, serde::Deserialize, Default)]
+#[snugom(schema = 1, service = "guild", collection = "guilds", default_sort = "-created_at")]
 pub struct Guild {
     #[snugom(id)]
     pub guild_id: String,
@@ -69,50 +67,42 @@ pub struct Guild {
     #[snugom(filterable, sortable)]
     pub member_count: u32,
 
-    #[snugom(datetime(epoch_millis), created_at, filterable, sortable)]
+    #[snugom(created_at)]
     pub created_at: DateTime<Utc>,
 }
 
-// 2. Register in a bundle
-bundle! {
-    service: "guild",
-    entities: {
-        Guild => "guilds",
-    }
-}
+// 2. Define your client - entities are auto-discovered
+#[derive(SnugomClient)]
+#[snugom(prefix = "myapp")]
+pub struct MyClient;
 
-// 3. Use run! for CRUD operations
-async fn example(repo: &Repo<Guild>, conn: &mut ConnectionManager) {
-    // Create
-    let created = snugom::run! {
-        repo, conn,
-        create => Guild {
-            name: "Dragon Knights",
-            visibility: GuildVisibility::Public,
-            member_count: 1u32,
-        }
-    }?;
+// 3. Use client for simple CRUD, macros for complex nested operations
+async fn example() -> anyhow::Result<()> {
+    let client = MyClient::connect("redis://localhost").await?;
+    client.ensure_indexes().await?;
 
-    // Get
-    let guild = snugom::run! {
-        repo, conn,
-        get => Guild(entity_id = &created.id)
-    }?;
+    // Create - returns the entity
+    let guild = client.guilds().create(Guild {
+        name: "Dragon Knights".into(),
+        visibility: GuildVisibility::Public,
+        member_count: 1,
+        ..Default::default()
+    }).await?;
 
-    // Update
-    snugom::run! {
-        repo, conn,
-        update => Guild(entity_id = &created.id) {
-            name: "Dragon Knights Elite",
-            member_count: 5u32,
-        }
-    }?;
+    // Read
+    let guild = client.guilds().get(&guild.guild_id).await?; // Option<Guild>
+    let guild = client.guilds().get_or_error(&guild.guild_id).await?; // Guild (errors if not found)
+
+    // Update - returns updated entity
+    let guild = client.guilds().update(&guild.guild_id, Guild::patch()
+        .name("Dragon Knights Elite".into())
+        .member_count(5)
+    ).await?;
 
     // Delete
-    snugom::run! {
-        repo, conn,
-        delete => Guild(entity_id = &created.id)
-    }?;
+    client.guilds().delete(&guild.guild_id).await?;
+
+    Ok(())
 }
 ```
 
@@ -121,9 +111,12 @@ async fn example(repo: &Repo<Guild>, conn: &mut ConnectionManager) {
 | Concept | Description |
 |---------|-------------|
 | `SnugomEntity` | Derive macro that generates metadata, builders, and search implementations |
-| `bundle!` | Registers entities with service/collection names, validates relations |
-| `Repo<T>` | Repository providing CRUD and search operations |
-| `run!` | Declarative macro for create/get/update/delete operations |
+| `SnugomClient` | Derive macro that generates a typed client with collection accessors |
+| `CollectionHandle<T>` | Type-safe accessor for CRUD operations (via `client.guilds()`) |
+| `snugom_create!` | Macro for creating entities with nested relations |
+| `snugom_update!` | Macro for updating entities with relation mutations |
+| `snugom_delete!` | Macro for deleting entities with cascade control |
+| `snugom_upsert!` | Macro for upsert operations (update or create) |
 | `snug!` | Lower-level macro for building payloads (used with `repo.create()`) |
 | `SearchEntity` | Auto-derived trait enabling search/filter/sort capabilities |
 
@@ -133,18 +126,20 @@ async fn example(repo: &Repo<Guild>, conn: &mut ConnectionManager) {
 
 ```rust
 #[derive(SnugomEntity)]
-#[snugom(version = 1, default_sort = "-created_at")]
+#[snugom(schema = 1, service = "myapp", collection = "entities", default_sort = "-created_at")]
 pub struct MyEntity { ... }
 
 // Compound unique: (tenant_id, name) must be unique together
 #[derive(SnugomEntity)]
-#[snugom(version = 1, unique_together = ["tenant_id", "name"])]
+#[snugom(schema = 1, service = "myapp", collection = "scoped", unique_together = ["tenant_id", "name"])]
 pub struct TenantScopedEntity { ... }
 ```
 
 | Attribute | Required | Description |
 |-----------|----------|-------------|
-| `version = N` | Yes | Schema version stored in metadata |
+| `schema = N` | Yes | Schema version stored in metadata |
+| `service = "name"` | Yes | Service name for key prefixing |
+| `collection = "name"` | Yes | Collection name for key prefixing |
 | `default_sort = "field"` | No | Default sort field. Prefix with `-` for descending |
 | `unique_together = ["f1", "f2"]` | No | Compound unique constraint across multiple fields |
 
@@ -163,7 +158,7 @@ pub status: MyEnum,
 #[snugom(filterable, sortable)]
 pub count: u32,
 
-#[snugom(datetime(epoch_millis), created_at, filterable, sortable)]
+#[snugom(created_at)]
 pub created_at: DateTime<Utc>,
 
 #[snugom(relation(target = "members", cascade = "delete"))]
@@ -181,7 +176,7 @@ pub slug: String,  // Enforces uniqueness across all entities
 | `filterable(text)` | Force TEXT type (full-text) for strings |
 | `sortable` | Enable sorting via `?sort_by=field` |
 | `searchable` | Include in full-text `?q=` search queries |
-| `datetime(epoch_millis)` | Create numeric mirror field (`field_ts`) for sorting |
+| `datetime` | Create numeric mirror field (`field_ts`) for sorting |
 | `created_at` | Auto-set to `Utc::now()` on create |
 | `updated_at` | Auto-set to `Utc::now()` on create and update |
 | `validate(...)` | Apply validation rules (see [Validation Rules](#validation-rules)) |
@@ -189,97 +184,114 @@ pub slug: String,  // Enforces uniqueness across all entities
 | `unique` | Enforce SQL-like UNIQUE constraint within collection |
 | `unique(case_insensitive)` | Case-insensitive unique ("Foo" == "foo") |
 
-## Bundle Registration
+## CRUD Operations
 
-The `bundle!` macro registers entities with their service and collection names:
+### Simple CRUD with SnugomClient
+
+For simple operations, use the `SnugomClient` directly without macros:
 
 ```rust
-bundle! {
-    service: "guild",
-    entities: {
-        Guild => "guilds",
-        GuildMember => "guild_members",
-        GuildApplication => "guild_applications",
-    }
-}
+#[derive(SnugomClient)]
+#[snugom(prefix = "myapp")]
+pub struct MyClient;
+
+let client = MyClient::connect("redis://localhost").await?;
+client.ensure_indexes().await?;
+
+// ============ Single Record by ID ============
+let guild = client.guilds().get(&id).await?;              // Option<T>
+let guild = client.guilds().get_or_error(&id).await?;     // T (errors if not found)
+let exists = client.guilds().exists(&id).await?;          // bool
+
+// ============ Create ============
+let guild = client.guilds().create(Guild {
+    name: "Dragon Knights".into(),
+    visibility: GuildVisibility::Public,
+    member_count: 1,
+    ..Default::default()
+}).await?;  // Returns T
+
+// ============ Update ============
+let guild = client.guilds().update(&id, Guild::patch()
+    .name("New Name".into())
+    .member_count(10)
+).await?;  // Returns T
+
+// ============ Delete ============
+client.guilds().delete(&id).await?;  // Returns ()
+
+// ============ Query-based Reads ============
+let guild = client.guilds().find_first(query).await?;             // Option<T>
+let guild = client.guilds().find_first_or_error(query).await?;    // T (errors if not found)
+let guilds = client.guilds().find_many(query).await?;             // SearchResult<T>
+let total = client.guilds().count().await?;                       // u64
+let total = client.guilds().count_where(query).await?;            // u64
+let exists = client.guilds().exists_where(query).await?;          // bool
+
+// ============ Bulk Operations ============
+let result = client.guilds().create_many(entities).await?;        // BulkCreateResult
+let count = client.guilds().update_many(query, patch).await?;     // u64
+let count = client.guilds().delete_many(query).await?;            // u64
 ```
 
-This generates:
-- `guild::ensure_indexes(conn, prefix)` - Creates RediSearch indexes for all entities
-- Key prefixes: `{prefix}:guild:guilds:{id}`, `{prefix}:guild:guild_members:{id}`, etc.
-- Compile-time validation that relation targets exist in the bundle
+### Complex Nested Operations
 
-## CRUD Operations with `run!`
-
-The `run!` macro is the primary way to perform database operations:
-
-### Create
+For nested creates and relation mutations, use the macro DSL:
 
 ```rust
-let created = snugom::run! {
-    &repo, &mut conn,
-    create => Guild {
-        name: "Dragon Knights",
-        visibility: GuildVisibility::Public,
+use snugom::{snugom_create, snugom_update, snugom_delete, snugom_upsert};
+
+// Nested create - create parent with children in one operation
+let guild = snugom_create!(&client.guilds(), &mut conn, Guild {
+    name: "Dragon Knights".to_string(),
+    visibility: GuildVisibility::Public,
+    member_count: 1u32,
+    guild_members: [
+        create GuildMember {
+            user_id: "user123".to_string(),
+            role: MemberRole::Leader,
+        }
+    ],
+}).await?;
+
+// Update with nested create
+snugom_update!(&client.guilds(), &mut conn, Guild(entity_id = guild_id) {
+    name: "New Name".to_string(),
+    member_count: 10u32,
+    guild_members: [
+        create GuildMember {
+            user_id: "user456".to_string(),
+            role: MemberRole::Member,
+        }
+    ],
+}).await?;
+
+// Delete
+snugom_delete!(&client.guilds(), &mut conn, Guild(entity_id = guild_id)).await?;
+
+// Upsert - update if exists, create if not
+let result = snugom_upsert!(&client.guilds(), &mut conn, Guild() {
+    update: Guild(entity_id = guild_id) {
+        member_count: 5u32,
+    },
+    create: Guild {
+        name: "New Guild".to_string(),
         member_count: 1u32,
-        // Nested creation
-        guild_members: [
-            create GuildMember {
-                user_id: "user123",
-                role: MemberRole::Leader,
-            }
-        ],
     }
-}?;
-```
-
-### Get
-
-```rust
-let guild = snugom::run! {
-    &repo, &mut conn,
-    get => Guild(entity_id = &guild_id)
-}?;
-// Returns Option<Guild>
-```
-
-### Update
-
-```rust
-snugom::run! {
-    &repo, &mut conn,
-    update => Guild(entity_id = &guild_id) {
-        name: "New Name",
-        member_count: 10u32,
-        // Optional fields: use `?` suffix
-        description?: Some("Updated description"),
-    }
-}?;
-```
-
-### Delete
-
-```rust
-snugom::run! {
-    &repo, &mut conn,
-    delete => Guild(entity_id = &guild_id)
-}?;
+}).await?;
 ```
 
 ### Relation Mutations
 
 ```rust
-snugom::run! {
-    &repo, &mut conn,
-    update => Guild(entity_id = &guild_id) {
-        guild_members: [
-            connect member_id,           // Attach existing entity
-            disconnect old_member_id,    // Remove relationship (keep entity)
-            delete stale_member_id,      // Delete entity (if cascade allows)
-            create GuildMember { ... },  // Create and attach
-        ],
-    }
-}?;
+snugom_update!(&client.guilds(), &mut conn, Guild(entity_id = guild_id) {
+    guild_members: [
+        connect member_id,           // Attach existing entity
+        disconnect old_member_id,    // Remove relationship (keep entity)
+        delete stale_member_id,      // Delete entity (if cascade allows)
+        create GuildMember { ... },  // Create and attach
+    ],
+}).await?;
 ```
 
 ## Search, Filter, and Sort
@@ -393,10 +405,10 @@ This table maps your intent to the correct field attributes.
 
 | I want to... | Attributes | API Example |
 |--------------|------------|-------------|
-| Filter by date range | `#[snugom(datetime(epoch_millis), filterable)]` | `?filter=created_at:range:1704067200000,` |
-| Sort by date | `#[snugom(datetime(epoch_millis), sortable)]` | `?sort_by=created_at` |
-| Auto-set on create | `#[snugom(datetime(epoch_millis), created_at)]` | (auto-populated) |
-| Auto-set on update | `#[snugom(datetime(epoch_millis), updated_at)]` | (auto-populated) |
+| Filter by date range | `#[snugom(datetime, filterable)]` | `?filter=created_at:range:1704067200000,` |
+| Sort by date | `#[snugom(datetime, sortable)]` | `?sort_by=created_at` |
+| Auto-set on create | `#[snugom(created_at)]` | (auto-populated, sortable, filterable) |
+| Auto-set on update | `#[snugom(updated_at)]` | (auto-populated, sortable, filterable) |
 
 ### Array Fields (Vec<String>)
 
@@ -481,12 +493,13 @@ pub struct GuildMember {
 Prevent duplicate operations with idempotency keys:
 
 ```rust
-snugom::run! {
-    &repo, &mut conn,
-    create => Guild(idempotency_key = "create-guild-abc123") {
-        name: "Dragon Knights",
-    }
-}?;
+// Using the validation builder with idempotency key
+let guild = repo.create_with_conn(
+    &mut conn,
+    Guild::validation_builder()
+        .name("Dragon Knights".to_string())
+        .idempotency_key("create-guild-abc123"),
+).await?;
 // Repeat calls with same key return cached result
 ```
 
@@ -495,12 +508,9 @@ snugom::run! {
 Guard against stale updates:
 
 ```rust
-snugom::run! {
-    &repo, &mut conn,
-    update => Guild(entity_id = &id, expected_version = 5) {
-        name: "Updated Name",
-    }
-}?;
+snugom_update!(&repo, &mut conn, Guild(entity_id = id, expected_version = 5) {
+    name: "Updated Name".to_string(),
+}).await?;
 // Raises RepoError::VersionConflict if version != 5
 ```
 
@@ -544,6 +554,54 @@ SnugOM requires Redis with RediSearch and RedisJSON modules:
 docker run --rm -p 6379:6379 redis/redis-stack-server:latest
 ```
 
+## Schema Migrations & CLI
+
+SnugOM includes a powerful migration system with automatic schema change detection. The `snugom` CLI scans your entity definitions, generates migration files, and manages deployment to Redis.
+
+### Key Features
+
+- **Automatic Change Detection** — No manual version bumping; the CLI scans your entity structs and detects additions, removals, and modifications
+- **Smart Migration Classification** — Changes are classified as `BASELINE` (new entity), `AUTO` (safe transformations), `STUB` (requires custom code), or `METADATA_ONLY`
+- **Dry-Run Mode** — Preview migrations before applying them to production
+- **Schema Snapshots** — Point-in-time JSON snapshots enable accurate diffing
+- **Uniqueness Validation** — Check for duplicate values before adding unique constraints
+
+### Quick Start
+
+```bash
+# Initialize SnugOM in your project
+snugom init
+
+# Create a migration after changing entities
+snugom migrate create --name add_user_avatar
+
+# Preview what would be migrated
+snugom migrate deploy --dry-run
+
+# Apply pending migrations
+snugom migrate deploy
+
+# Check schema version distribution in Redis
+snugom schema status
+
+# Preview pending changes without creating a migration
+snugom schema diff
+```
+
+### CLI Commands Overview
+
+| Command | Description |
+|---------|-------------|
+| `snugom init` | Initialize SnugOM project structure |
+| `snugom migrate create --name <name>` | Generate migration from schema changes |
+| `snugom migrate deploy` | Apply pending migrations to Redis |
+| `snugom migrate resolve <name>` | Manually mark migration status |
+| `snugom schema status` | Show schema version distribution |
+| `snugom schema diff` | Preview pending schema changes |
+| `snugom schema validate` | Check field uniqueness before constraints |
+
+For comprehensive documentation including workflows, examples, and all CLI options, see the [CLI Guide](src/bin/snugom/CLI_GUIDE.md).
+
 ## Development
 
 ```bash
@@ -563,7 +621,7 @@ SnugOM includes runnable examples in `src/examples/`. Each example is self-conta
 
 | Example | Description |
 |---------|-------------|
-| `example01_hello_entity` | Basic CRUD with builders and repos (no `run!` macro) |
+| `example01_hello_entity` | Basic CRUD with builders and repos |
 | `example02_belongs_to` | One-to-one (`belongs_to`) relationships with cascade delete |
 | `example03_has_many` | Parent-child (`has_many`) relationships with cascade delete |
 | `example04_many_to_many` | Many-to-many connect/disconnect via `snug!` patch directives |
@@ -573,12 +631,11 @@ SnugOM includes runnable examples in `src/examples/`. Each example is self-conta
 | `example08_search_filters` | RediSearch queries with TAG/NUMERIC filters and sorting |
 | `example09_cascade_strategies` | Cascade delete vs detach strategies with depth guards |
 | `example10_idempotency_versions` | Idempotency keys and optimistic concurrency version checks |
-| `example11_run_macro_crud` | Basic CRUD using the `run!` macro |
-| `example12_run_macro_nested` | Nested create/update/upsert flows with `run!` macro |
-| `example13_relation_mutations` | Mixed relation mutations (connect, disconnect, delete) |
+| `example13_relation_mutations` | Mixed relation mutations (connect, disconnect, delete) with `snugom_update!` |
 | `example14_search_manager` | `SearchQuery` helpers with filter parsing |
 | `example15_unique_constraints` | SQL-like UNIQUE constraints: single-field, case-insensitive, compound |
-| `example99_social_network` | Full tour: nested creates, cascades, idempotency, relations, upsert |
+| `example_prisma_client` | Prisma-style `SnugomClient` usage patterns |
+| `example99_social_network` | Full tour: nested creates, cascades, idempotency, relations, upsert using macro DSL |
 
 ### Running Examples
 
