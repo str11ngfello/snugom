@@ -2,14 +2,14 @@ use anyhow::Result;
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 
-use crate::errors::RepoError;
 use super::support;
-use crate::repository::Repo;
 use crate::SnugomEntity;
+use crate::errors::RepoError;
+use crate::repository::Repo;
 
 /// An entity with a unique field - like a guild with a unique name.
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "examples", collection = "unique_name")]
+#[snugom(schema = 1, collection = "unique_name")]
 struct UniqueNameEntity {
     #[snugom(id)]
     id: String,
@@ -21,7 +21,7 @@ struct UniqueNameEntity {
 
 /// An entity with case-insensitive unique constraint.
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "examples", collection = "case_insensitive")]
+#[snugom(schema = 1, collection = "case_insensitive")]
 struct CaseInsensitiveEntity {
     #[snugom(id)]
     id: String,
@@ -32,7 +32,7 @@ struct CaseInsensitiveEntity {
 
 /// An entity with a compound unique constraint.
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "examples", collection = "tenant_scoped")]
+#[snugom(schema = 1, collection = "tenant_scoped")]
 #[snugom(unique_together = ["tenant_id", "name"])]
 struct TenantScopedEntity {
     #[snugom(id)]
@@ -114,7 +114,10 @@ pub async fn run() -> Result<()> {
     let ci_second = CaseInsensitiveEntity::validation_builder().slug("HELLO-WORLD".to_string());
     let ci_result = ci_repo.create_with_conn(&mut conn, ci_second).await;
     match ci_result {
-        Err(RepoError::UniqueConstraintViolation { fields, .. }) => {
+        Err(RepoError::UniqueConstraintViolation {
+            fields,
+            ..
+        }) => {
             assert_eq!(fields, vec!["slug"]);
             println!("  Correctly rejected case-insensitive duplicate");
         }
@@ -142,7 +145,10 @@ pub async fn run() -> Result<()> {
         .name("Alpha".to_string());
     let ts_b1_created = ts_repo.create_with_conn(&mut conn, ts_b1).await?;
     let ts_b1_id = ts_b1_created.id.clone();
-    println!("  Created entity: tenant=globex, name=Alpha (different tenant, same name OK) (id: {})", ts_b1_id);
+    println!(
+        "  Created entity: tenant=globex, name=Alpha (different tenant, same name OK) (id: {})",
+        ts_b1_id
+    );
 
     // Same name for same tenant - should fail
     let ts_a2 = TenantScopedEntity::validation_builder()
@@ -150,7 +156,10 @@ pub async fn run() -> Result<()> {
         .name("Alpha".to_string());
     let ts_result = ts_repo.create_with_conn(&mut conn, ts_a2).await;
     match ts_result {
-        Err(RepoError::UniqueConstraintViolation { fields, .. }) => {
+        Err(RepoError::UniqueConstraintViolation {
+            fields,
+            ..
+        }) => {
             assert_eq!(fields, vec!["tenant_id", "name"]);
             println!("  Correctly rejected duplicate (tenant_id, name) combination");
         }
@@ -164,7 +173,10 @@ pub async fn run() -> Result<()> {
         .name("Beta".to_string());
     let ts_a3_created = ts_repo.create_with_conn(&mut conn, ts_a3).await?;
     let ts_a3_id = ts_a3_created.id.clone();
-    println!("  Created entity: tenant=acme, name=Beta (same tenant, different name OK) (id: {})", ts_a3_id);
+    println!(
+        "  Created entity: tenant=acme, name=Beta (same tenant, different name OK) (id: {})",
+        ts_a3_id
+    );
 
     // Clean up
     ts_repo.delete_with_conn(&mut conn, &ts_a1_id, None).await?;

@@ -5,6 +5,8 @@ pub(crate) struct ParsedField {
     validations: Vec<FieldValidation>,
     datetime_mirror: Option<String>,
     is_id: bool,
+    /// Composite ID components: `#[snugom(id = ["field1", "field2"])]`
+    composite_id_components: Option<Vec<String>>,
     auto_updated: bool,
     auto_created: bool,
     // Search-related fields

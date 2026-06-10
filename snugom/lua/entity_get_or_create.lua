@@ -29,10 +29,10 @@ local function check_idempotency(key, idempotency_key)
         return nil
     end
     local parts = split_key(key)
-    if #parts < 3 then
+    if #parts < 2 then
         return nil
     end
-    local store_key = table.concat({ parts[1], parts[2], "idempotency", idempotency_key }, ":")
+    local store_key = table.concat({ parts[1], "idempotency", idempotency_key }, ":")
     local existing = redis.call("GET", store_key)
     if existing then
         return existing
@@ -45,10 +45,10 @@ local function store_idempotency(key, idempotency_key, response, ttl)
         return
     end
     local parts = split_key(key)
-    if #parts < 3 then
+    if #parts < 2 then
         return
     end
-    local store_key = table.concat({ parts[1], parts[2], "idempotency", idempotency_key }, ":")
+    local store_key = table.concat({ parts[1], "idempotency", idempotency_key }, ":")
     if ttl and ttl > 0 then
         redis.call("SET", store_key, response, "EX", ttl)
     else
@@ -57,7 +57,7 @@ local function store_idempotency(key, idempotency_key, response, ttl)
 end
 
 -- Check unique constraint (simplified version from upsert)
-local function check_unique_constraint(constraint, entity_id, prefix, service, collection)
+local function check_unique_constraint(constraint, entity_id, prefix, collection)
     local fields = constraint["fields"]
     local values = constraint["values"]
     local case_insensitive = constraint["case_insensitive"] == true
@@ -82,7 +82,14 @@ local function check_unique_constraint(constraint, entity_id, prefix, service, c
     end
 
     local lookup_value = table.concat(lookup_parts, "|")
-    local unique_key = table.concat({ prefix, service, "unique", collection, table.concat(fields, "_") }, ":")
+    -- Single field: {prefix}:{collection}:unique:{field}
+    -- Compound: {prefix}:{collection}:unique_compound:{field1}_{field2}
+    local unique_key
+    if #fields == 1 then
+        unique_key = table.concat({ prefix, collection, "unique", fields[1] }, ":")
+    else
+        unique_key = table.concat({ prefix, collection, "unique_compound", table.concat(fields, "_") }, ":")
+    end
 
     -- Check if this value already exists
     local existing_id = redis.call("HGET", unique_key, lookup_value)
@@ -113,12 +120,11 @@ local function apply_datetime_mirrors(key, datetime_mirrors)
 end
 
 -- Apply relations (simplified from upsert)
-local function apply_relations(relations, prefix, service)
+local function apply_relations(relations)
     for i = 1, #relations do
         local rel = relations[i]
         local op = rel["op"]
         local rel_key = rel["key"]
-        local entity_id = rel["entity_id"]
         local target_id = rel["target_id"]
 
         if op == "connect" then
@@ -146,11 +152,10 @@ local function main()
         return cached
     end
 
-    -- Parse key structure
+    -- Parse key structure: {prefix}:{collection}:{id}
     local key_parts = split_key(entity_key)
     local prefix = key_parts[1]
-    local service = key_parts[2]
-    local collection = key_parts[3]
+    local collection = key_parts[2]
 
     -- Check if the entity exists
     local exists = redis.call("EXISTS", entity_key) == 1
@@ -165,12 +170,9 @@ local function main()
             return encode_result({ error = "internal_error", message = "entity exists but could not be read" })
         end
 
-        response = encode_result({
-            ok = true,
-            branch = "found",
-            entity_id = entity_id,
-            entity = cjson.decode(entity_json),
-        })
+        -- IMPORTANT: Pass raw JSON string to avoid cjson decode/encode cycle
+        -- which corrupts empty arrays [] into empty objects {}
+        response = '{"ok":true,"branch":"found","entity_id":' .. cjson.encode(entity_id) .. ',"entity":' .. entity_json .. '}'
     else
         -- =====================
         -- CREATE PATH
@@ -189,7 +191,7 @@ local function main()
         for i = 1, #unique_constraints do
             local constraint = unique_constraints[i]
             local violation, unique_key, lookup_value = check_unique_constraint(
-                constraint, entity_id, prefix, service, collection
+                constraint, entity_id, prefix, collection
             )
             if violation then
                 return encode_result(violation)
@@ -220,22 +222,17 @@ local function main()
         apply_datetime_mirrors(entity_key, datetime_mirrors)
 
         -- Apply relations
-        apply_relations(relations, prefix, service)
+        apply_relations(relations)
 
         -- Re-read the created entity to return it
         local created_json = redis.call("JSON.GET", entity_key, "$")
-        local created_entity = nil
-        if created_json and created_json ~= false then
-            created_entity = cjson.decode(created_json)
+        if not created_json or created_json == false then
+            return encode_result({ error = "internal_error", message = "entity created but could not be read back" })
         end
 
-        response = encode_result({
-            ok = true,
-            branch = "created",
-            version = 1,
-            entity_id = entity_id,
-            entity = created_entity,
-        })
+        -- IMPORTANT: Pass raw JSON string to avoid cjson decode/encode cycle
+        -- which corrupts empty arrays [] into empty objects {}
+        response = '{"ok":true,"branch":"created","version":1,"entity_id":' .. cjson.encode(entity_id) .. ',"entity":' .. created_json .. '}'
     end
 
     -- Store idempotency

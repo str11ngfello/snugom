@@ -1,6 +1,6 @@
 [package]
 name = "snugom"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 
 [[bin]]
@@ -21,7 +21,7 @@ redis = { version = "0.32", features = [
 thiserror = "2.0"
 anyhow = "1.0"
 inventory = "0.3"
-snugom-macros = { path = "../snugom-macros", version = "0.1.0" }
+snugom-macros = { path = "../snugom-macros", version = "0.2.0" }
 email_address = "0.2"
 url = "2.5"
 uuid = { version = "1.8", features = ["std", "v4"] }

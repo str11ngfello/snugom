@@ -2,7 +2,7 @@
 
 SnugOM is a Redis-based ORM with a focus on developer experience. It leverages the advanced search features of Redis 8, adds relational data modeling, atomic mutations, lock-free optimistic concurrency control, idempotency keys and more. All functionality is reachable through a set of macros that are compatible with serde and garde. 
 
-Define entities with `#[derive(SnugomEntity)]`, and use the Prisma-style `SnugomClient` for CRUD operations, or the macro DSL (`snugom_create!`, `snugom_update!`, `snugom_delete!`, `snugom_upsert!`) for complex nested operations with relations, validation, and search. 
+Define entities with `#[derive(SnugomEntity)]`, and use the Prisma-style `SnugomClient` for CRUD operations, or the macro DSL (`snugom_create!`, `snugom_update!`, `snugom_delete!`, `snugom_upsert!`, `snugom_find!`, `snugom_find_many!`) for complex nested operations with relations, validation, and search. 
 
 ## Table of Contents
 - [SnugOM](#snugom)
@@ -32,6 +32,11 @@ Define entities with `#[derive(SnugomEntity)]`, and use the Prisma-style `Snugom
   - [Relations and Cascades](#relations-and-cascades)
     - [Defining Relations](#defining-relations)
     - [Cascade Policies](#cascade-policies)
+  - [Find with Includes](#find-with-includes)
+    - [Simple Includes](#simple-includes)
+    - [Nested Includes](#nested-includes)
+    - [Include Options](#include-options)
+    - [List Queries with Includes](#list-queries-with-includes)
   - [Advanced Topics](#advanced-topics)
     - [Idempotency](#idempotency)
     - [Optimistic Concurrency](#optimistic-concurrency)
@@ -42,7 +47,6 @@ Define entities with `#[derive(SnugomEntity)]`, and use the Prisma-style `Snugom
   - [Development](#development)
   - [Examples](#examples)
     - [Running Examples](#running-examples)
-  - [Future Improvements](#future-improvements)
   - [Contributing](#contributing)
 
 ## Quick Example
@@ -117,6 +121,8 @@ async fn example() -> anyhow::Result<()> {
 | `snugom_update!` | Macro for updating entities with relation mutations |
 | `snugom_delete!` | Macro for deleting entities with cascade control |
 | `snugom_upsert!` | Macro for upsert operations (update or create) |
+| `snugom_find!` | Macro for reading an entity with relation includes (atomic Lua) |
+| `snugom_find_many!` | Macro for list queries with relation includes |
 | `snug!` | Lower-level macro for building payloads (used with `repo.create()`) |
 | `SearchEntity` | Auto-derived trait enabling search/filter/sort capabilities |
 
@@ -201,6 +207,7 @@ client.ensure_indexes().await?;
 // ============ Single Record by ID ============
 let guild = client.guilds().get(&id).await?;              // Option<T>
 let guild = client.guilds().get_or_error(&id).await?;     // T (errors if not found)
+let guilds = client.guilds().get_many(&ids).await?;       // Vec<T> (batch fetch)
 let exists = client.guilds().exists(&id).await?;          // bool
 
 // ============ Create ============
@@ -486,6 +493,100 @@ pub struct GuildMember {
 | `cascade = "detach"` | Remove relationship but keep entities |
 | `cascade = "none"` | No automatic handling |
 
+## Find with Includes
+
+`snugom_find!` and `snugom_find_many!` load entities with related data in a single call. Simple includes use an atomic Lua script (snapshot-consistent reads). Includes with options (limit, sort) use FT.SEARCH.
+
+### Simple Includes
+
+```rust
+use snugom::snugom_find;
+
+// No includes — returns entity directly
+let guild = snugom_find!(client, Guild(&guild_id)).await?;
+
+// One include — returns tuple
+let (guild, members) = snugom_find!(client, Guild(&guild_id) {
+    guild_members: [include GuildMember],
+}).await?;
+// members: Vec<GuildMember>
+
+// Multiple includes
+let (guild, members, apps) = snugom_find!(client, Guild(&guild_id) {
+    guild_members: [include GuildMember],
+    guild_applications: [include GuildApplication],
+}).await?;
+```
+
+### Nested Includes
+
+The include DSL uses the same `alias: [verb Type { ... }]` syntax as the write macros. Nesting is recursive with no depth limit.
+
+```rust
+// Author → posts → comments
+let (author, posts_with_comments) = snugom_find!(client, Author(&id) {
+    posts: [include Post {
+        comments: [include Comment],
+    }],
+}).await?;
+// posts_with_comments: Vec<(Post, Vec<Comment>)>
+```
+
+### Include Options
+
+Add `limit`, `sort`, `filter`, or `offset` inside the include braces to use the FT.SEARCH path. Returns `RelationData<Vec<T>>` with total count and has_more metadata.
+
+```rust
+use snugom::RelationData;
+
+let (author, posts) = snugom_find!(client, Author(&id) {
+    posts: [include Post { limit: 5, sort: "-created_at" }],
+}).await?;
+// posts: RelationData<Vec<Post>>
+// posts.items, posts.total, posts.has_more
+
+// Options + nested
+let (author, posts) = snugom_find!(client, Author(&id) {
+    posts: [include Post {
+        limit: 10,
+        comments: [include Comment],
+    }],
+}).await?;
+// posts: RelationData<Vec<(Post, Vec<Comment>)>>
+```
+
+### List Queries with Includes
+
+`snugom_find_many!` searches for entities and loads includes per result. Query params go in parentheses, includes in optional braces.
+
+```rust
+use snugom::snugom_find_many;
+
+// No includes
+let result = snugom_find_many!(client, Guild(
+    filter = "status:eq:active",
+    page_size = 10,
+)).await?;
+// result: SearchResult<Guild>
+
+// With includes
+let result = snugom_find_many!(client, Guild(
+    filter = "status:eq:active",
+    page_size = 10,
+) {
+    guild_members: [include GuildMember],
+}).await?;
+// result: SearchResult<(Guild, Vec<GuildMember>)>
+
+// With nested includes
+let result = snugom_find_many!(client, Guild(page_size = 10) {
+    guild_members: [include GuildMember {
+        user_profile: [include UserProfile],
+    }],
+}).await?;
+// result: SearchResult<(Guild, Vec<(GuildMember, Vec<UserProfile>)>)>
+```
+
 ## Advanced Topics
 
 ### Idempotency
@@ -619,23 +720,35 @@ cargo fmt && cargo clippy -- -D warnings
 
 SnugOM includes runnable examples in `src/examples/`. Each example is self-contained and demonstrates specific features:
 
+#### Repo-Level Examples (`src/examples/repo/`)
+
 | Example | Description |
 |---------|-------------|
-| `example01_hello_entity` | Basic CRUD with builders and repos |
-| `example02_belongs_to` | One-to-one (`belongs_to`) relationships with cascade delete |
-| `example03_has_many` | Parent-child (`has_many`) relationships with cascade delete |
-| `example04_many_to_many` | Many-to-many connect/disconnect via `snug!` patch directives |
-| `example05_timestamps` | Auto-managed `created_at`/`updated_at` and epoch mirrors |
-| `example06_validation_rules` | Full validation DSL: length, range, regex, email, url, uuid, required_if, forbidden_if, custom validators |
-| `example07_patch_updates` | Partial updates with validation and immutable field handling |
-| `example08_search_filters` | RediSearch queries with TAG/NUMERIC filters and sorting |
-| `example09_cascade_strategies` | Cascade delete vs detach strategies with depth guards |
-| `example10_idempotency_versions` | Idempotency keys and optimistic concurrency version checks |
-| `example13_relation_mutations` | Mixed relation mutations (connect, disconnect, delete) with `snugom_update!` |
-| `example14_search_manager` | `SearchQuery` helpers with filter parsing |
-| `example15_unique_constraints` | SQL-like UNIQUE constraints: single-field, case-insensitive, compound |
-| `example_prisma_client` | Prisma-style `SnugomClient` usage patterns |
-| `example99_social_network` | Full tour: nested creates, cascades, idempotency, relations, upsert using macro DSL |
+| `ex01_hello_entity` | Basic CRUD with builders and repos |
+| `ex02_belongs_to` | One-to-one (`belongs_to`) relationships with cascade delete |
+| `ex03_has_many` | Parent-child (`has_many`) relationships with cascade delete |
+| `ex04_many_to_many` | Many-to-many connect/disconnect via `snug!` patch directives |
+| `ex05_timestamps` | Auto-managed `created_at`/`updated_at` and epoch mirrors |
+| `ex06_validation_rules` | Full validation DSL |
+| `ex07_patch_updates` | Partial updates with validation |
+| `ex08_search_filters` | RediSearch queries with TAG/NUMERIC filters and sorting |
+| `ex09_cascade_strategies` | Cascade delete vs detach strategies |
+| `ex10_idempotency` | Idempotency keys and optimistic concurrency |
+| `ex11_relation_mutations` | Mixed relation mutations with `snugom_update!` |
+| `ex12_search_manager` | `SearchQuery` helpers with filter parsing |
+| `ex13_unique_constraints` | SQL-like UNIQUE constraints |
+
+#### Client-Level Examples (`src/examples/client/`)
+
+| Example | Description |
+|---------|-------------|
+| `ex01`–`ex06` | CRUD: hello client, create, read, update, delete, upsert |
+| `ex07`–`ex10` | Search: basic, pagination, advanced filters, sorting |
+| `ex11`–`ex15` | Schema: field attributes, timestamps, validation, unique, custom IDs |
+| `ex16`–`ex18` | Relations: defining, mutating, cascade strategies |
+| `ex19`–`ex21` | **Find with Includes**: `snugom_find!`, include options, `snugom_find_many!` |
+| `ex22`–`ex26` | Advanced: multi-entity client, error handling, optimistic locking, idempotency, batch |
+| `social_network` | Full tour: multi-file application with nested creates, cascades, relations |
 
 ### Running Examples
 

@@ -58,10 +58,10 @@ local function check_idempotency(key, idempotency_key)
         return nil
     end
     local parts = split_key(key)
-    if #parts < 3 then
+    if #parts < 2 then
         return nil
     end
-    local store_key = table.concat({ parts[1], parts[2], "idempotency", idempotency_key }, ":")
+    local store_key = table.concat({ parts[1], "idempotency", idempotency_key }, ":")
     local existing = redis.call("GET", store_key)
     if existing then
         return existing
@@ -74,10 +74,10 @@ local function store_idempotency(key, idempotency_key, response, ttl)
         return
     end
     local parts = split_key(key)
-    if #parts < 3 then
+    if #parts < 2 then
         return
     end
-    local store_key = table.concat({ parts[1], parts[2], "idempotency", idempotency_key }, ":")
+    local store_key = table.concat({ parts[1], "idempotency", idempotency_key }, ":")
     if ttl and ttl > 0 then
         redis.call("SET", store_key, response, "EX", ttl)
     else
@@ -133,7 +133,7 @@ local function apply_mirror(key, mirror)
 end
 
 -- Apply relation mutations
-local function apply_relations(relations, prefix, service)
+local function apply_relations(relations)
     for i = 1, #relations do
         local relation = relations[i]
         local relation_key = relation["relation_key"]
@@ -143,7 +143,6 @@ local function apply_relations(relations, prefix, service)
 
         local relation_parts
         local rel_prefix
-        local rel_service
         local alias
         local left_id
         local reverse_alias
@@ -151,9 +150,8 @@ local function apply_relations(relations, prefix, service)
         if maintain_reverse then
             relation_parts = split_key(relation_key)
             rel_prefix = relation_parts[1]
-            rel_service = relation_parts[2]
-            alias = relation_parts[4]
-            left_id = relation_parts[5]
+            alias = relation_parts[3]
+            left_id = relation_parts[4]
             reverse_alias = alias .. "_reverse"
         end
 
@@ -162,7 +160,7 @@ local function apply_relations(relations, prefix, service)
             if maintain_reverse then
                 for j = 1, #add do
                     local member_id = add[j]
-                    local reverse_key = table.concat({ rel_prefix, rel_service, "rel", reverse_alias, member_id }, ":")
+                    local reverse_key = table.concat({ rel_prefix, "rel", reverse_alias, member_id }, ":")
                     redis.call("SADD", reverse_key, left_id)
                 end
             end
@@ -173,7 +171,7 @@ local function apply_relations(relations, prefix, service)
             if maintain_reverse then
                 for j = 1, #remove do
                     local member_id = remove[j]
-                    local reverse_key = table.concat({ rel_prefix, rel_service, "rel", reverse_alias, member_id }, ":")
+                    local reverse_key = table.concat({ rel_prefix, "rel", reverse_alias, member_id }, ":")
                     redis.call("SREM", reverse_key, left_id)
                     if redis.call("SCARD", reverse_key) == 0 then
                         redis.call("DEL", reverse_key)
@@ -199,7 +197,7 @@ local function apply_datetime_mirrors(key, datetime_mirrors)
 end
 
 -- Check unique constraint and return violation if found
-local function check_unique_constraint(constraint, entity_id, prefix, service, collection)
+local function check_unique_constraint(constraint, entity_id, prefix, collection)
     local fields = constraint["fields"]
     local case_insensitive = constraint["case_insensitive"] == true
     local values = constraint["values"]
@@ -225,10 +223,10 @@ local function check_unique_constraint(constraint, entity_id, prefix, service, c
     local lookup_value = table.concat(lookup_parts, ":")
     local unique_key
     if #fields == 1 then
-        unique_key = table.concat({ prefix, service, collection, "unique", fields[1] }, ":")
+        unique_key = table.concat({ prefix, collection, "unique", fields[1] }, ":")
     else
         local field_suffix = table.concat(fields, "_")
-        unique_key = table.concat({ prefix, service, collection, "unique_compound", field_suffix }, ":")
+        unique_key = table.concat({ prefix, collection, "unique_compound", field_suffix }, ":")
     end
 
     local existing_id = redis.call("HGET", unique_key, lookup_value)
@@ -272,8 +270,7 @@ local function main()
     -- Parse key structure from update_key
     local key_parts = split_key(update_key)
     local prefix = key_parts[1]
-    local service = key_parts[2]
-    local collection = key_parts[3]
+    local collection = key_parts[2]
 
     -- Check if the entity to UPDATE exists
     local exists = redis.call("EXISTS", update_key) == 1
@@ -358,10 +355,10 @@ local function main()
                     if old_lookup_value ~= new_lookup_value then
                         local unique_key
                         if #fields == 1 then
-                            unique_key = table.concat({ prefix, service, collection, "unique", fields[1] }, ":")
+                            unique_key = table.concat({ prefix, collection, "unique", fields[1] }, ":")
                         else
                             local field_suffix = table.concat(fields, "_")
-                            unique_key = table.concat({ prefix, service, collection, "unique_compound", field_suffix }, ":")
+                            unique_key = table.concat({ prefix, collection, "unique_compound", field_suffix }, ":")
                         end
 
                         local existing_id = redis.call("HGET", unique_key, new_lookup_value)
@@ -398,7 +395,7 @@ local function main()
         end
 
         -- Apply relations
-        apply_relations(update_relations, prefix, service)
+        apply_relations(update_relations)
 
         -- Increment version
         local current_version = load_current_version(update_key)
@@ -442,15 +439,14 @@ local function main()
         -- Parse create key structure (may differ from update key)
         local create_key_parts = split_key(create_key)
         local create_prefix = create_key_parts[1]
-        local create_service = create_key_parts[2]
-        local create_collection = create_key_parts[3]
+        local create_collection = create_key_parts[2]
 
         -- Check unique constraints
         local unique_updates = {}
         for i = 1, #create_unique_constraints do
             local constraint = create_unique_constraints[i]
             local violation, unique_key, lookup_value = check_unique_constraint(
-                constraint, create_entity_id, create_prefix, create_service, create_collection
+                constraint, create_entity_id, create_prefix, create_collection
             )
             if violation then
                 return encode_result(violation)
@@ -481,7 +477,7 @@ local function main()
         apply_datetime_mirrors(create_key, datetime_mirrors)
 
         -- Apply relations
-        apply_relations(create_relations, create_prefix, create_service)
+        apply_relations(create_relations)
 
         response = encode_result({
             ok = true,

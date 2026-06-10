@@ -20,7 +20,11 @@ pub struct MigrationFile {
 /// Generate a migration file from entity diffs.
 ///
 /// Returns the generated migration file with filename and content.
-pub fn generate_migration_file(name: &str, diffs: &[EntityDiff], timestamp: DateTime<Utc>) -> MigrationFile {
+pub fn generate_migration_file(
+    name: &str,
+    diffs: &[EntityDiff],
+    timestamp: DateTime<Utc>,
+) -> MigrationFile {
     let date_str = timestamp.format("%Y%m%d_%H%M%S").to_string();
     let filename = format!("{date_str}_{name}.rs");
     let module_name = format!("_{date_str}_{name}");
@@ -257,7 +261,10 @@ fn format_change(change: &EntityChange) -> String {
     }
 }
 
-fn generate_auto_transform(content: &mut String, diff: &EntityDiff) {
+fn generate_auto_transform(
+    content: &mut String,
+    diff: &EntityDiff,
+) {
     let _ = writeln!(content, "    // AUTO-GENERATED transforms:");
 
     for change in &diff.changes {
@@ -278,7 +285,10 @@ fn generate_auto_transform(content: &mut String, diff: &EntityDiff) {
     }
 }
 
-fn generate_stub_transform(content: &mut String, diff: &EntityDiff) {
+fn generate_stub_transform(
+    content: &mut String,
+    diff: &EntityDiff,
+) {
     let _ = writeln!(content, "    // TODO: Implement migration logic");
     let _ = writeln!(content, "    //");
     let _ = writeln!(content, "    // The following changes require manual implementation:");
@@ -317,7 +327,11 @@ fn generate_stub_transform(content: &mut String, diff: &EntityDiff) {
     let _ = writeln!(content, "    //   doc.as_object_mut().unwrap().remove(\"old_field\");");
 }
 
-fn generate_field_transform(content: &mut String, fc: &FieldChange, complexity: MigrationComplexity) {
+fn generate_field_transform(
+    content: &mut String,
+    fc: &FieldChange,
+    complexity: MigrationComplexity,
+) {
     match fc.change_type {
         ChangeType::Added => {
             if let Some(ref field) = fc.new_field {
@@ -354,7 +368,10 @@ fn generate_field_transform(content: &mut String, fc: &FieldChange, complexity: 
     }
 }
 
-fn get_default_value(field_type: &str, serde_default: Option<&str>) -> String {
+fn get_default_value(
+    field_type: &str,
+    serde_default: Option<&str>,
+) -> String {
     // If serde default is specified, try to use it
     if let Some(default_fn) = serde_default {
         if default_fn == "Default::default" {

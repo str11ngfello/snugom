@@ -14,7 +14,7 @@ use super::support;
 use crate::{SnugomClient, SnugomEntity, snugom_upsert};
 
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "settings")]
+#[snugom(schema = 1, collection = "settings")]
 struct UserSettings {
     #[snugom(id)]
     id: String,
@@ -61,7 +61,8 @@ pub async fn run() -> Result<()> {
         update: UserSettings(entity_id = &idempotency_key) {
             theme: "dark".to_string(),
         },
-    }).await?;
+    })
+    .await?;
 
     // Verify it was created with create block values
     let created = settings
@@ -92,7 +93,8 @@ pub async fn run() -> Result<()> {
             theme: "dark".to_string(),
             language: "fr".to_string(),
         },
-    }).await?;
+    })
+    .await?;
 
     // Verify it was updated
     let updated = settings.get_or_error(&settings_id).await?;
@@ -117,7 +119,8 @@ pub async fn run() -> Result<()> {
         update: UserSettings(entity_id = &another_key) {
             theme: "system".to_string(),
         },
-    }).await?;
+    })
+    .await?;
 
     // Verify creation (since it didn't exist, create block was used)
     let another = settings

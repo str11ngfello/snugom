@@ -4,8 +4,8 @@
 
 use redis::aio::ConnectionManager;
 
-use crate::SnugomClient;
 use super::models::{Comment, Follow, Like, Notification, Post, User};
+use crate::SnugomClient;
 
 /// The main client for the social network application.
 ///

@@ -15,10 +15,8 @@ pub struct EntityRegistration {
     pub type_id: TypeId,
     /// The name of the entity type (e.g., "Guild")
     pub type_name: &'static str,
-    /// The collection name (e.g., "guilds")
+    /// The collection name (e.g., "guilds") — globally unique
     pub collection_name: &'static str,
-    /// The service name (e.g., "guild")
-    pub service_name: &'static str,
     /// Function to get the entity descriptor
     pub descriptor_fn: fn() -> crate::types::EntityDescriptor,
 }
@@ -29,8 +27,7 @@ inventory::collect!(EntityRegistration);
 /// Get all registered entities.
 ///
 /// This iterates over all entities that have been registered via the
-/// `#[derive(SnugomEntity)]` macro with the `#[snugom(collection = "...", service = "...")]`
-/// attribute.
+/// `#[derive(SnugomEntity)]` macro with the `#[snugom(collection = "...")]` attribute.
 pub fn registered_entities() -> impl Iterator<Item = &'static EntityRegistration> {
     inventory::iter::<EntityRegistration>()
 }

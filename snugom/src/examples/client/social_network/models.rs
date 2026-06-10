@@ -9,7 +9,7 @@ use crate::SnugomEntity;
 
 /// A user in the social network.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "social", collection = "sn_users")]
+#[snugom(schema = 1, collection = "sn_users")]
 pub struct User {
     #[snugom(id)]
     pub id: String,
@@ -60,7 +60,7 @@ pub struct User {
 
 /// A post created by a user.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "social", collection = "sn_posts")]
+#[snugom(schema = 1, collection = "sn_posts")]
 pub struct Post {
     #[snugom(id)]
     pub id: String,
@@ -103,7 +103,7 @@ pub struct Post {
 
 /// A comment on a post.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "social", collection = "sn_comments")]
+#[snugom(schema = 1, collection = "sn_comments")]
 pub struct Comment {
     #[snugom(id)]
     pub id: String,
@@ -134,7 +134,7 @@ pub struct Comment {
 
 /// A like on a post or comment.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "social", collection = "sn_likes")]
+#[snugom(schema = 1, collection = "sn_likes")]
 pub struct Like {
     #[snugom(id)]
     pub id: String,
@@ -156,7 +156,7 @@ pub struct Like {
 
 /// A follow relationship between users.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "social", collection = "sn_follows")]
+#[snugom(schema = 1, collection = "sn_follows")]
 pub struct Follow {
     #[snugom(id)]
     pub id: String,
@@ -174,7 +174,7 @@ pub struct Follow {
 
 /// A notification for a user.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "social", collection = "sn_notifications")]
+#[snugom(schema = 1, collection = "sn_notifications")]
 pub struct Notification {
     #[snugom(id)]
     pub id: String,

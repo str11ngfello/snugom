@@ -34,8 +34,7 @@ mod registration;
 
 pub use collection::{BulkCreateResult, CollectionHandle};
 pub use registration::{
-    EntityRegistration, get_entity_by_collection, get_entity_by_name, is_entity_registered,
-    registered_entities,
+    EntityRegistration, get_entity_by_collection, get_entity_by_name, is_entity_registered, registered_entities,
 };
 
 use redis::aio::ConnectionManager;
@@ -65,8 +64,14 @@ pub struct Client {
 
 impl Client {
     /// Create a new client with the given connection and key prefix.
-    pub fn new(conn: ConnectionManager, prefix: String) -> Self {
-        Self { conn, prefix }
+    pub fn new(
+        conn: ConnectionManager,
+        prefix: String,
+    ) -> Self {
+        Self {
+            conn,
+            prefix,
+        }
     }
 
     /// Create a client from an existing Redis connection URL.
@@ -75,7 +80,10 @@ impl Client {
     /// ```ignore
     /// let client = Client::connect("redis://localhost:6379", "myapp").await?;
     /// ```
-    pub async fn connect(url: &str, prefix: impl Into<String>) -> Result<Self, redis::RedisError> {
+    pub async fn connect(
+        url: &str,
+        prefix: impl Into<String>,
+    ) -> Result<Self, redis::RedisError> {
         let redis_client = redis::Client::open(url)?;
         let conn = ConnectionManager::new(redis_client).await?;
         Ok(Self::new(conn, prefix.into()))

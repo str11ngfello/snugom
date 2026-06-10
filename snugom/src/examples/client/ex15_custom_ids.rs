@@ -15,7 +15,7 @@ use crate::{SnugomClient, SnugomEntity, snugom_create};
 
 /// Entity with default ID field named "id" and auto-generation.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "default_id_items")]
+#[snugom(schema = 1, collection = "default_id_items")]
 struct DefaultIdItem {
     #[snugom(id)]
     id: String,
@@ -26,7 +26,7 @@ struct DefaultIdItem {
 
 /// Entity with custom ID field name.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "orders")]
+#[snugom(schema = 1, collection = "orders")]
 struct Order {
     /// Custom ID field name - "order_id" instead of "id"
     #[snugom(id)]
@@ -41,7 +41,7 @@ struct Order {
 
 /// Entity with product_sku as the ID.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "inventory")]
+#[snugom(schema = 1, collection = "inventory")]
 struct InventoryItem {
     #[snugom(id)]
     sku: String,
@@ -69,10 +69,15 @@ pub async fn run() -> Result<()> {
         let mut items = client.default_id_items();
 
         // Create without specifying ID - it will be auto-generated
-        let created_id = snugom_create!(client, DefaultIdItem {
-            name: "Auto-generated ID item".to_string(),
-            created_at: Utc::now(),
-        }).await?.id;
+        let created_id = snugom_create!(
+            client,
+            DefaultIdItem {
+                name: "Auto-generated ID item".to_string(),
+                created_at: Utc::now(),
+            }
+        )
+        .await?
+        .id;
 
         // ID is automatically generated (typically a UUID-like string)
         assert!(!created_id.is_empty(), "ID should be auto-generated");
@@ -87,11 +92,16 @@ pub async fn run() -> Result<()> {
     {
         let mut orders = client.orders();
 
-        let order_id = snugom_create!(client, Order {
-            customer_id: "cust_123".to_string(),
-            total: 9999,
-            created_at: Utc::now(),
-        }).await?.id;
+        let order_id = snugom_create!(
+            client,
+            Order {
+                customer_id: "cust_123".to_string(),
+                total: 9999,
+                created_at: Utc::now(),
+            }
+        )
+        .await?
+        .id;
 
         // The field is named order_id, but it's still auto-generated
         assert!(!order_id.is_empty());
@@ -106,12 +116,16 @@ pub async fn run() -> Result<()> {
         let mut inventory = client.inventory_items();
 
         // Provide your own SKU as the ID
-        let created = snugom_create!(client, InventoryItem {
-            sku: "SKU-001-WIDGET".to_string(), // User-provided ID
-            name: "Widget".to_string(),
-            quantity: 100,
-            created_at: Utc::now(),
-        }).await?;
+        let created = snugom_create!(
+            client,
+            InventoryItem {
+                sku: "SKU-001-WIDGET".to_string(), // User-provided ID
+                name: "Widget".to_string(),
+                quantity: 100,
+                created_at: Utc::now(),
+            }
+        )
+        .await?;
 
         // The provided SKU is used as the ID
         assert_eq!(created.id, "SKU-001-WIDGET");
@@ -122,12 +136,16 @@ pub async fn run() -> Result<()> {
         assert_eq!(fetched.quantity, 100);
 
         // Create another with different SKU
-        let created2 = snugom_create!(client, InventoryItem {
-            sku: "SKU-002-GADGET".to_string(),
-            name: "Gadget".to_string(),
-            quantity: 50,
-            created_at: Utc::now(),
-        }).await?;
+        let created2 = snugom_create!(
+            client,
+            InventoryItem {
+                sku: "SKU-002-GADGET".to_string(),
+                name: "Gadget".to_string(),
+                quantity: 50,
+                created_at: Utc::now(),
+            }
+        )
+        .await?;
 
         assert_eq!(created2.id, "SKU-002-GADGET");
 

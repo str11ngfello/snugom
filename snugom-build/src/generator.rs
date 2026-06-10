@@ -4,7 +4,6 @@ use crate::scanner::{EntityInfo, scan_directory};
 use anyhow::{Context, Result};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -30,7 +29,10 @@ impl ClientGenerator {
     /// Add a path to scan for entity definitions.
     ///
     /// Can be called multiple times to scan multiple directories.
-    pub fn scan_path(mut self, path: impl Into<PathBuf>) -> Self {
+    pub fn scan_path(
+        mut self,
+        path: impl Into<PathBuf>,
+    ) -> Self {
         self.scan_paths.push(path.into());
         self
     }
@@ -38,7 +40,10 @@ impl ClientGenerator {
     /// Set the output file path for the generated code.
     ///
     /// Default: `src/generated/snugom_client.rs`
-    pub fn output_file(mut self, path: impl Into<PathBuf>) -> Self {
+    pub fn output_file(
+        mut self,
+        path: impl Into<PathBuf>,
+    ) -> Self {
         self.output_file = path.into();
         self
     }
@@ -46,7 +51,10 @@ impl ClientGenerator {
     /// Set the crate name used in import paths.
     ///
     /// Default: `crate`
-    pub fn crate_name(mut self, name: impl Into<String>) -> Self {
+    pub fn crate_name(
+        mut self,
+        name: impl Into<String>,
+    ) -> Self {
         self.crate_name = name.into();
         self
     }
@@ -54,7 +62,10 @@ impl ClientGenerator {
     /// Set the name of the generated client struct.
     ///
     /// Default: `SnugomClient`
-    pub fn client_name(mut self, name: impl Into<String>) -> Self {
+    pub fn client_name(
+        mut self,
+        name: impl Into<String>,
+    ) -> Self {
         self.client_name = name.into();
         self
     }
@@ -113,11 +124,7 @@ impl ClientGenerator {
         // Generate mod.rs to expose the client module
         if let Some(parent) = self.output_file.parent() {
             let mod_file = parent.join("mod.rs");
-            let file_stem = self
-                .output_file
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("snugom_client");
+            let file_stem = self.output_file.file_stem().and_then(|s| s.to_str()).unwrap_or("snugom_client");
 
             let mod_content = format!(
                 "//! Auto-generated module. Do not edit manually.\n\npub mod {file_stem};\npub use {file_stem}::*;\n"
@@ -146,38 +153,38 @@ impl Default for ClientGenerator {
 }
 
 /// Generate the SnugomClient code.
-fn generate_client_code(client_name: &str, entities: &[EntityInfo]) -> Result<String> {
+fn generate_client_code(
+    client_name: &str,
+    entities: &[EntityInfo],
+) -> Result<String> {
     let client_ident = format_ident!("{}", client_name);
 
-    // Group entities by module path for imports
-    let mut imports_by_module: HashMap<String, Vec<String>> = HashMap::new();
-    for entity in entities {
-        imports_by_module
-            .entry(entity.module_path.clone())
-            .or_default()
-            .push(entity.name.clone());
-    }
-
-    // Generate import statements
-    let imports: Vec<TokenStream> = imports_by_module
+    // Generate per-entity imports with cfg attributes
+    // We can't group by module because different entities may have different cfg attrs
+    let imports: Vec<TokenStream> = entities
         .iter()
-        .map(|(module, names)| {
-            let module_path: syn::Path = syn::parse_str(module).unwrap();
-            let name_idents: Vec<_> = names.iter().map(|n| format_ident!("{}", n)).collect();
+        .map(|entity| {
+            let module_path: syn::Path = syn::parse_str(&entity.module_path).unwrap();
+            let entity_ident = format_ident!("{}", entity.name);
+            let cfg_attrs = generate_cfg_attrs(&entity.cfg_attrs);
+
             quote! {
-                use #module_path::{#(#name_idents),*};
+                #cfg_attrs
+                use #module_path::#entity_ident;
             }
         })
         .collect();
 
-    // Generate accessor methods
+    // Generate accessor methods with cfg attributes
     let accessors: Vec<TokenStream> = entities
         .iter()
         .map(|entity| {
             let entity_ident = format_ident!("{}", entity.name);
             let method_name = format_ident!("{}", pluralize(&to_snake_case(&entity.name)));
+            let cfg_attrs = generate_cfg_attrs(&entity.cfg_attrs);
 
             quote! {
+                #cfg_attrs
                 /// Get a collection handle for [`#entity_ident`] entities.
                 pub fn #method_name(&self) -> ::snugom::CollectionHandle<#entity_ident> {
                     let repo = ::snugom::Repo::new(self.prefix.clone());
@@ -187,23 +194,27 @@ fn generate_client_code(client_name: &str, entities: &[EntityInfo]) -> Result<St
         })
         .collect();
 
-    // Generate ensure_registered calls
+    // Generate ensure_registered calls with cfg attributes
     let ensure_registered_calls: Vec<TokenStream> = entities
         .iter()
         .map(|entity| {
             let entity_ident = format_ident!("{}", entity.name);
+            let cfg_attrs = generate_cfg_attrs(&entity.cfg_attrs);
             quote! {
+                #cfg_attrs
                 <#entity_ident as ::snugom::types::EntityMetadata>::ensure_registered();
             }
         })
         .collect();
 
-    // Generate ensure_index calls
+    // Generate ensure_index calls with cfg attributes
     let ensure_index_calls: Vec<TokenStream> = entities
         .iter()
         .map(|entity| {
             let entity_ident = format_ident!("{}", entity.name);
+            let cfg_attrs = generate_cfg_attrs(&entity.cfg_attrs);
             quote! {
+                #cfg_attrs
                 {
                     use ::snugom::search::SearchEntity;
                     let definition = <#entity_ident as SearchEntity>::index_definition(&self.prefix);
@@ -310,6 +321,29 @@ fn generate_client_code(client_name: &str, entities: &[EntityInfo]) -> Result<St
     Ok(prettyplease::unparse(&syntax_tree))
 }
 
+/// Generate cfg attribute tokens from a list of cfg conditions.
+///
+/// If cfg_attrs is empty, returns an empty TokenStream.
+/// Otherwise, generates #[cfg(...)] attributes for each condition.
+fn generate_cfg_attrs(cfg_attrs: &[String]) -> TokenStream {
+    if cfg_attrs.is_empty() {
+        return TokenStream::new();
+    }
+
+    let cfg_tokens: Vec<TokenStream> = cfg_attrs
+        .iter()
+        .filter_map(|attr| {
+            // Parse the cfg condition as a token stream
+            let tokens: TokenStream = attr.parse().ok()?;
+            Some(quote! {
+                #[cfg(#tokens)]
+            })
+        })
+        .collect();
+
+    quote! { #(#cfg_tokens)* }
+}
+
 /// Convert PascalCase to snake_case.
 fn to_snake_case(name: &str) -> String {
     let mut result = String::new();
@@ -359,5 +393,36 @@ mod tests {
         assert_eq!(pluralize("match"), "matches");
         assert_eq!(pluralize("category"), "categories");
         assert_eq!(pluralize("key"), "keys");
+    }
+
+    #[test]
+    fn test_generate_cfg_attrs_empty() {
+        let result = generate_cfg_attrs(&[]);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_generate_cfg_attrs_single() {
+        let result = generate_cfg_attrs(&["feature = \"blob\"".to_string()]);
+        let result_str = result.to_string();
+        assert!(result_str.contains("cfg"));
+        assert!(result_str.contains("feature"));
+        assert!(result_str.contains("blob"));
+    }
+
+    #[test]
+    fn test_generate_cfg_attrs_multiple() {
+        let result = generate_cfg_attrs(&[
+            "feature = \"blob\"".to_string(),
+            "not(test)".to_string(),
+        ]);
+        let result_str = result.to_string();
+        eprintln!("Generated cfg attrs: {}", result_str);
+        // Should have two #[cfg(...)] attributes
+        assert!(result_str.contains("cfg"), "Should contain 'cfg'");
+        assert!(result_str.contains("feature"), "Should contain 'feature'");
+        assert!(result_str.contains("blob"), "Should contain 'blob'");
+        assert!(result_str.contains("not"), "Should contain 'not'");
+        assert!(result_str.contains("test"), "Should contain 'test'");
     }
 }

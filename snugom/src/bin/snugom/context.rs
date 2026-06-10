@@ -90,10 +90,8 @@ impl ProjectContext {
 
         // Load config if it exists
         let config = if config_path.exists() {
-            let content =
-                std::fs::read_to_string(&config_path).context("Failed to read config.toml")?;
-            let config: SnugomConfig =
-                toml::from_str(&content).context("Failed to parse config.toml")?;
+            let content = std::fs::read_to_string(&config_path).context("Failed to read config.toml")?;
+            let config: SnugomConfig = toml::from_str(&content).context("Failed to parse config.toml")?;
             Some(config)
         } else {
             None
@@ -145,17 +143,12 @@ impl ProjectContext {
 
     /// Get the Redis URL, expanding environment variables
     pub fn redis_url(&self) -> Result<String> {
-        let url = self
-            .config
-            .as_ref()
-            .map(|c| c.redis.url.as_str())
-            .unwrap_or("${REDIS_URL}");
+        let url = self.config.as_ref().map(|c| c.redis.url.as_str()).unwrap_or("${REDIS_URL}");
 
         // Expand environment variables
         if url.starts_with("${") && url.ends_with('}') {
             let var_name = &url[2..url.len() - 1];
-            std::env::var(var_name)
-                .with_context(|| format!("Environment variable {var_name} not set"))
+            std::env::var(var_name).with_context(|| format!("Environment variable {var_name} not set"))
         } else {
             Ok(url.to_string())
         }

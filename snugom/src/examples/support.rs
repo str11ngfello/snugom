@@ -4,9 +4,11 @@ use redis::aio::ConnectionManager;
 
 use crate::id::generate_entity_id;
 
-/// Establish a connection manager pointing at the local Redis instance.
+/// Establish a connection manager using `TEST_REDIS_URL`.
 pub async fn redis_connection() -> Result<ConnectionManager> {
-    let client = Client::open("redis://127.0.0.1/")?;
+    let url = std::env::var("TEST_REDIS_URL")
+        .expect("TEST_REDIS_URL must be set to run examples");
+    let client = Client::open(url.as_str())?;
     let manager = client.get_connection_manager().await?;
     Ok(manager)
 }

@@ -11,10 +11,10 @@ use redis::aio::ConnectionManager;
 use serde::{Deserialize, Serialize};
 
 use super::support;
-use crate::{SnugomClient, SnugomEntity, SearchQuery, search::SortOrder};
+use crate::{SearchQuery, SnugomClient, SnugomEntity, search::SortOrder};
 
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "players")]
+#[snugom(schema = 1, collection = "players")]
 struct Player {
     #[snugom(id)]
     id: String,

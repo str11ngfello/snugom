@@ -31,11 +31,11 @@ pub fn load_latest_snapshots(schemas_dir: &Path) -> Result<HashMap<String, Entit
         }
 
         // Parse the snapshot
-        let content = std::fs::read_to_string(&path)
-            .with_context(|| format!("Failed to read snapshot: {}", path.display()))?;
+        let content =
+            std::fs::read_to_string(&path).with_context(|| format!("Failed to read snapshot: {}", path.display()))?;
 
-        let schema: EntitySchema = serde_json::from_str(&content)
-            .with_context(|| format!("Failed to parse snapshot: {}", path.display()))?;
+        let schema: EntitySchema =
+            serde_json::from_str(&content).with_context(|| format!("Failed to parse snapshot: {}", path.display()))?;
 
         // Keep only the latest version for each entity
         let entity_name = schema.entity.clone();
@@ -53,7 +53,11 @@ pub fn load_latest_snapshots(schemas_dir: &Path) -> Result<HashMap<String, Entit
 
 /// Load a specific version snapshot for an entity.
 #[allow(dead_code)]
-pub fn load_snapshot(schemas_dir: &Path, entity: &str, version: u32) -> Result<Option<EntitySchema>> {
+pub fn load_snapshot(
+    schemas_dir: &Path,
+    entity: &str,
+    version: u32,
+) -> Result<Option<EntitySchema>> {
     let snake_name = to_snake_case(entity);
     let filename = format!("{snake_name}_v{version}.json");
     let path = schemas_dir.join(&filename);
@@ -62,18 +66,21 @@ pub fn load_snapshot(schemas_dir: &Path, entity: &str, version: u32) -> Result<O
         return Ok(None);
     }
 
-    let content = std::fs::read_to_string(&path)
-        .with_context(|| format!("Failed to read snapshot: {}", path.display()))?;
+    let content =
+        std::fs::read_to_string(&path).with_context(|| format!("Failed to read snapshot: {}", path.display()))?;
 
-    let schema: EntitySchema = serde_json::from_str(&content)
-        .with_context(|| format!("Failed to parse snapshot: {}", path.display()))?;
+    let schema: EntitySchema =
+        serde_json::from_str(&content).with_context(|| format!("Failed to parse snapshot: {}", path.display()))?;
 
     Ok(Some(schema))
 }
 
 /// List all snapshot versions for an entity.
 #[allow(dead_code)]
-pub fn list_snapshot_versions(schemas_dir: &Path, entity: &str) -> Result<Vec<u32>> {
+pub fn list_snapshot_versions(
+    schemas_dir: &Path,
+    entity: &str,
+) -> Result<Vec<u32>> {
     let mut versions = Vec::new();
     let snake_name = to_snake_case(entity);
     let prefix = format!("{snake_name}_v");
@@ -89,13 +96,15 @@ pub fn list_snapshot_versions(schemas_dir: &Path, entity: &str) -> Result<Vec<u3
         let path = entry.path();
 
         if let Some(filename) = path.file_name().and_then(|n| n.to_str())
-            && filename.starts_with(&prefix) && filename.ends_with(".json") {
-                // Extract version number
-                let version_str = &filename[prefix.len()..filename.len() - 5];
-                if let Ok(version) = version_str.parse::<u32>() {
-                    versions.push(version);
-                }
+            && filename.starts_with(&prefix)
+            && filename.ends_with(".json")
+        {
+            // Extract version number
+            let version_str = &filename[prefix.len()..filename.len() - 5];
+            if let Ok(version) = version_str.parse::<u32>() {
+                versions.push(version);
             }
+        }
     }
 
     versions.sort();

@@ -45,10 +45,7 @@ pub fn update_source_schema_version(
                 let old_attr = attr_content;
                 let new_attr = attr_content.replace(
                     &schema_match,
-                    &schema_match.replace(
-                        &format!("= {}", old_version.unwrap_or(1)),
-                        &format!("= {new_version}"),
-                    ),
+                    &schema_match.replace(&format!("= {}", old_version.unwrap_or(1)), &format!("= {new_version}")),
                 );
 
                 let new_attr = if new_attr == old_attr {
@@ -63,12 +60,7 @@ pub fn update_source_schema_version(
                 // No version in existing #[snugom(...)], add it
                 // Insert "schema = N, " after "#[snugom("
                 let insert_pos = snugom_start + 9; // len of "#[snugom("
-                new_content = format!(
-                    "{}schema = {}, {}",
-                    &content[..insert_pos],
-                    new_version,
-                    &content[insert_pos..]
-                );
+                new_content = format!("{}schema = {}, {}", &content[..insert_pos], new_version, &content[insert_pos..]);
                 updated = true;
             }
         }
@@ -79,12 +71,7 @@ pub fn update_source_schema_version(
             let derive_end = derive_start + end_offset + 2;
             // Insert new attribute after derive
             let insertion = format!("\n#[snugom(schema = {new_version})]");
-            new_content = format!(
-                "{}{}{}",
-                &content[..derive_end],
-                insertion,
-                &content[derive_end..]
-            );
+            new_content = format!("{}{}{}", &content[..derive_end], insertion, &content[derive_end..]);
             updated = true;
         }
     }
@@ -103,9 +90,7 @@ fn find_schema_in_attr(attr: &str) -> Option<String> {
     if let Some(pos) = attr.find(pattern) {
         let start = pos + pattern.len();
         let rest = &attr[start..];
-        let num_end = rest
-            .find(|c: char| !c.is_ascii_digit())
-            .unwrap_or(rest.len());
+        let num_end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
         if num_end > 0 {
             return Some(format!("{}{}", pattern, &rest[..num_end]));
         }
@@ -114,33 +99,31 @@ fn find_schema_in_attr(attr: &str) -> Option<String> {
 }
 
 /// Replace schema value in attribute string
-fn replace_schema_value(attr: &str, new_schema: u32) -> String {
+fn replace_schema_value(
+    attr: &str,
+    new_schema: u32,
+) -> String {
     let pattern = "schema = ";
     if let Some(pos) = attr.find(pattern) {
         let start = pos + pattern.len();
         let rest = &attr[start..];
-        let num_end = rest
-            .find(|c: char| !c.is_ascii_digit())
-            .unwrap_or(rest.len());
+        let num_end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
         if num_end > 0 {
-            return format!(
-                "{}schema = {}{}",
-                &attr[..pos],
-                new_schema,
-                &rest[num_end..]
-            );
+            return format!("{}schema = {}{}", &attr[..pos], new_schema, &rest[num_end..]);
         }
     }
     attr.to_string()
 }
 
 /// Update the migrations/mod.rs file to include a new migration.
-pub fn update_migrations_mod(migrations_dir: &Path, module_name: &str) -> Result<()> {
+pub fn update_migrations_mod(
+    migrations_dir: &Path,
+    module_name: &str,
+) -> Result<()> {
     let mod_path = migrations_dir.join("mod.rs");
 
     let content = if mod_path.exists() {
-        std::fs::read_to_string(&mod_path)
-            .with_context(|| format!("Failed to read {}", mod_path.display()))?
+        std::fs::read_to_string(&mod_path).with_context(|| format!("Failed to read {}", mod_path.display()))?
     } else {
         // Create initial mod.rs content
         r#"//! Generated migrations module.
@@ -166,11 +149,7 @@ pub fn update_migrations_mod(migrations_dir: &Path, module_name: &str) -> Result
     for (i, line) in content.lines().enumerate() {
         if line.trim().starts_with("mod ") && line.contains(';') {
             // Track the end of the last mod line
-            last_mod_end = content
-                .lines()
-                .take(i + 1)
-                .map(|l| l.len() + 1)
-                .sum::<usize>();
+            last_mod_end = content.lines().take(i + 1).map(|l| l.len() + 1).sum::<usize>();
         }
     }
 
@@ -181,26 +160,16 @@ pub fn update_migrations_mod(migrations_dir: &Path, module_name: &str) -> Result
         for (i, line) in content.lines().enumerate() {
             let trimmed = line.trim();
             if !trimmed.is_empty() && !trimmed.starts_with("//") && !trimmed.starts_with("/*") {
-                insert_pos = content
-                    .lines()
-                    .take(i)
-                    .map(|l| l.len() + 1)
-                    .sum::<usize>();
+                insert_pos = content.lines().take(i).map(|l| l.len() + 1).sum::<usize>();
                 break;
             }
         }
     }
 
     // Build new content
-    let new_content = format!(
-        "{}{}\n{}",
-        &content[..insert_pos],
-        mod_decl,
-        &content[insert_pos..]
-    );
+    let new_content = format!("{}{}\n{}", &content[..insert_pos], mod_decl, &content[insert_pos..]);
 
-    std::fs::write(&mod_path, new_content)
-        .with_context(|| format!("Failed to write {}", mod_path.display()))?;
+    std::fs::write(&mod_path, new_content).with_context(|| format!("Failed to write {}", mod_path.display()))?;
 
     Ok(())
 }
@@ -211,27 +180,15 @@ mod tests {
 
     #[test]
     fn test_find_schema_in_attr() {
-        assert_eq!(
-            find_schema_in_attr("#[snugom(schema = 1)]"),
-            Some("schema = 1".to_string())
-        );
-        assert_eq!(
-            find_schema_in_attr("#[snugom(schema = 2)]"),
-            Some("schema = 2".to_string())
-        );
-        assert_eq!(
-            find_schema_in_attr("#[snugom(id, schema = 3)]"),
-            Some("schema = 3".to_string())
-        );
+        assert_eq!(find_schema_in_attr("#[snugom(schema = 1)]"), Some("schema = 1".to_string()));
+        assert_eq!(find_schema_in_attr("#[snugom(schema = 2)]"), Some("schema = 2".to_string()));
+        assert_eq!(find_schema_in_attr("#[snugom(id, schema = 3)]"), Some("schema = 3".to_string()));
         assert_eq!(find_schema_in_attr("#[snugom(id)]"), None);
     }
 
     #[test]
     fn test_replace_schema_value() {
-        assert_eq!(
-            replace_schema_value("#[snugom(schema = 1)]", 2),
-            "#[snugom(schema = 2)]"
-        );
+        assert_eq!(replace_schema_value("#[snugom(schema = 1)]", 2), "#[snugom(schema = 2)]");
         assert_eq!(
             replace_schema_value("#[snugom(schema = 1, other)]", 3),
             "#[snugom(schema = 3, other)]"

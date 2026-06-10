@@ -42,7 +42,11 @@ pub struct EntitySchema {
 
 impl EntitySchema {
     /// Create a new entity schema with default values
-    pub fn new(entity: String, source_file: String, source_line: usize) -> Self {
+    pub fn new(
+        entity: String,
+        source_file: String,
+        source_line: usize,
+    ) -> Self {
         Self {
             entity,
             collection: None,
@@ -108,7 +112,10 @@ fn is_false(b: &bool) -> bool {
 }
 
 impl FieldInfo {
-    pub fn new(name: String, field_type: String) -> Self {
+    pub fn new(
+        name: String,
+        field_type: String,
+    ) -> Self {
         Self {
             name,
             field_type,
@@ -134,7 +141,10 @@ pub enum FilterableType {
 }
 
 impl std::fmt::Display for FilterableType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
         match self {
             FilterableType::Tag => write!(f, "tag"),
             FilterableType::Text => write!(f, "text"),

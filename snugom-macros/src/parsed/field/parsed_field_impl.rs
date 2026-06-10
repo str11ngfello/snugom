@@ -10,6 +10,7 @@ impl ParsedField {
         let mut validations = Vec::new();
         let mut datetime_mirror = None;
         let mut is_id = false;
+        let mut composite_id_components: Option<Vec<String>> = None;
         let mut auto_updated = false;
         let mut auto_created = false;
         let mut index_spec = None;
@@ -25,6 +26,7 @@ impl ParsedField {
                     &mut validations,
                     &mut datetime_mirror,
                     &mut is_id,
+                    &mut composite_id_components,
                     &mut auto_updated,
                     &mut auto_created,
                     &mut index_spec,
@@ -36,6 +38,29 @@ impl ParsedField {
             }
         }
 
+        if let Some(rel) = &relation_spec
+            && matches!(rel.kind, RelationKind::BelongsTo)
+        {
+            match index_spec.as_ref() {
+                Some(idx) if idx.field_type != IndexFieldType::Tag => {
+                    return Err(Error::new(
+                        ident.span(),
+                        format!(
+                            "#[snugom(relation)] on `{name}` is a belongs_to and requires a tag index, \
+                             but the field has a non-tag index. Use `filterable(tag)` or remove the conflicting index."
+                        ),
+                    ));
+                }
+                Some(_) => {}
+                None => {
+                    index_spec = Some(IndexSpec {
+                        field_type: IndexFieldType::Tag,
+                        sortable: false,
+                    });
+                }
+            }
+        }
+
         Ok(Self {
             ident,
             name,
@@ -43,6 +68,7 @@ impl ParsedField {
             validations,
             datetime_mirror,
             is_id,
+            composite_id_components,
             auto_updated,
             auto_created,
             index_spec,
@@ -58,6 +84,7 @@ impl ParsedField {
         validations: &mut Vec<FieldValidation>,
         datetime_mirror: &mut Option<String>,
         is_id: &mut bool,
+        composite_id_components: &mut Option<Vec<String>>,
         auto_updated: &mut bool,
         auto_created: &mut bool,
         index_spec: &mut Option<IndexSpec>,
@@ -95,6 +122,19 @@ impl ParsedField {
                     return Err(meta.error("#[snugom(id)] requires a field of type String"));
                 }
                 *is_id = true;
+                // Parse optional composite: #[snugom(id = ["field1", "field2"])]
+                if meta.input.peek(syn::Token![=]) {
+                    let _eq: syn::Token![=] = meta.input.parse()?;
+                    let content;
+                    syn::bracketed!(content in meta.input);
+                    let fields: syn::punctuated::Punctuated<syn::LitStr, syn::Token![,]> =
+                        content.parse_terminated(|input| input.parse::<syn::LitStr>(), syn::Token![,])?;
+                    let components: Vec<String> = fields.into_iter().map(|lit| lit.value()).collect();
+                    if components.len() < 2 {
+                        return Err(meta.error("#[snugom(id = [...])] requires at least 2 component fields"));
+                    }
+                    *composite_id_components = Some(components);
+                }
             } else if meta.path.is_ident("updated_at") {
                 if *auto_updated {
                     return Err(meta.error("field already marked as #[snugom(updated_at)]"));
@@ -317,17 +357,26 @@ impl ParsedField {
             let inferred_target = explicit_target.unwrap_or_else(|| to_snake_plural(&element_type));
             let inferred_alias = explicit_alias.unwrap_or_else(|| field_name.to_string());
             (RelationKind::HasMany, inferred_target, inferred_alias, None)
-        } else if matches!(ty.base, FieldBase::String) && field_name.ends_with("_id") {
-            // {entity}_id: String → belongs_to
-            let entity_prefix = &field_name[..field_name.len() - 3]; // Remove "_id"
-            let inferred_target = explicit_target.unwrap_or_else(|| format!("{entity_prefix}s")); // Simple pluralization
-            let inferred_alias = explicit_alias.unwrap_or_else(|| entity_prefix.to_string());
+        } else if matches!(ty.base, FieldBase::String) {
+            // belongs_to: any scalar String foreign key. The target collection is REQUIRED —
+            // there is no name-based target inference (which mis-pluralized, e.g.
+            // `owner_id` -> `owners`, `category_id` -> `categorys`). This is the one canonical way.
+            // The alias defaults to the field name with a trailing `_id` stripped
+            // (`author_id` -> `author`, `created_by` -> `created_by`); override with `alias = "..."`.
+            let target = explicit_target.ok_or_else(|| {
+                meta.error(
+                    "belongs_to relation requires an explicit target collection, e.g. \
+                     #[snugom(relation(target = \"users\"))].",
+                )
+            })?;
+            let alias = explicit_alias
+                .unwrap_or_else(|| field_name.strip_suffix("_id").unwrap_or(field_name).to_string());
             let fk = explicit_foreign_key.unwrap_or_else(|| field_name.to_string());
-            (RelationKind::BelongsTo, inferred_target, inferred_alias, Some(fk))
+            (RelationKind::BelongsTo, target, alias, Some(fk))
         } else {
             return Err(meta.error(
-                "cannot infer relation type; use #[snugom(relation)] on Vec<T> for has_many, \
-                 on {entity}_id: String for belongs_to, or specify many_to_many explicitly"
+                "cannot infer relation type; use #[snugom(relation(target = \"...\"))] on a \
+                 String field for belongs_to, on Vec<T> for has_many, or many_to_many explicitly",
             ));
         };
 

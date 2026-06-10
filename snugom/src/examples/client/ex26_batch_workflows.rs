@@ -16,7 +16,7 @@ use super::support;
 use crate::{SnugomClient, SnugomEntity};
 
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "batch_products")]
+#[snugom(schema = 1, collection = "batch_products")]
 struct Product {
     #[snugom(id)]
     id: String,
@@ -33,7 +33,7 @@ struct Product {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "batch_events")]
+#[snugom(schema = 1, collection = "batch_events")]
 struct Event {
     #[snugom(id)]
     id: String,
@@ -122,9 +122,7 @@ pub async fn run() -> Result<()> {
         let widget_id_refs: Vec<&str> = widget_ids.iter().map(|s| s.as_str()).collect();
         let update_count = products
             .update_many_by_ids(&widget_id_refs, |id| {
-                Product::patch_builder()
-                    .entity_id(id)
-                    .status("on_sale".to_string())
+                Product::patch_builder().entity_id(id).status("on_sale".to_string())
             })
             .await?;
 
@@ -150,11 +148,7 @@ pub async fn run() -> Result<()> {
                     filter: vec!["status:eq:discontinued".to_string()],
                     ..Default::default()
                 },
-                |id| {
-                    Product::patch_builder()
-                        .entity_id(id)
-                        .status("archived".to_string())
-                },
+                |id| Product::patch_builder().entity_id(id).status("archived".to_string()),
             )
             .await?;
 
@@ -241,9 +235,7 @@ pub async fn run() -> Result<()> {
         let batch_id_refs: Vec<&str> = batch_ids.iter().map(|s| s.as_str()).collect();
         let updated = events
             .update_many_by_ids(&batch_id_refs, |id| {
-                Event::patch_builder()
-                    .entity_id(id)
-                    .processed("true".to_string())
+                Event::patch_builder().entity_id(id).processed("true".to_string())
             })
             .await?;
 
@@ -266,11 +258,7 @@ pub async fn run() -> Result<()> {
                     filter: vec!["processed:eq:false".to_string()],
                     ..Default::default()
                 },
-                |id| {
-                    Event::patch_builder()
-                        .entity_id(id)
-                        .processed("true".to_string())
-                },
+                |id| Event::patch_builder().entity_id(id).processed("true".to_string()),
             )
             .await?;
 

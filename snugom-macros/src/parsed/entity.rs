@@ -13,9 +13,7 @@ pub(crate) struct ParsedEntity {
     default_sort: Option<DefaultSortSpec>,
     // Unique constraints from #[snugom(unique_together = [...])]
     unique_together: Vec<UniqueTogetherSpec>,
-    // Optional service/collection for auto-registration (Prisma-style client API)
-    // When present, generates SnugomModel impl and inventory registration
-    service: Option<String>,
+    // Collection name (globally unique) — required for SnugomModel impl + inventory
     collection: Option<String>,
 }
 
@@ -50,7 +48,6 @@ impl ParsedEntity {
         let mut relations = Vec::new();
         let mut default_sort: Option<DefaultSortSpec> = None;
         let mut unique_together: Vec<UniqueTogetherSpec> = Vec::new();
-        let mut service: Option<String> = None;
         let mut collection: Option<String> = None;
 
         for attr in &input.attrs {
@@ -61,14 +58,10 @@ impl ParsedEntity {
                     &mut relations,
                     &mut default_sort,
                     &mut unique_together,
-                    &mut service,
                     &mut collection,
                 )?;
             }
         }
-
-        // service and collection can now optionally come from the derive macro
-        // When present, auto-registration via inventory is enabled
 
         let fields = match &input.data {
             Data::Struct(data) => match &data.fields {
@@ -105,7 +98,8 @@ impl ParsedEntity {
         let field_relations = Self::collect_field_relations(&fields);
         relations.extend(field_relations);
 
-        let derived_id = Self::detect_derived_id(&fields, &relations);
+        // Explicit composite ID from #[snugom(id = ["field1", "field2"])]
+        let derived_id = Self::build_composite_id(&fields)?;
 
         Ok(Self {
             name: input.ident.clone(),
@@ -117,7 +111,6 @@ impl ParsedEntity {
             derived_id,
             default_sort,
             unique_together,
-            service,
             collection,
         })
     }
@@ -145,14 +138,12 @@ impl ParsedEntity {
         _relations: &mut Vec<ParsedRelation>,
         default_sort: &mut Option<DefaultSortSpec>,
         unique_together: &mut Vec<UniqueTogetherSpec>,
-        service: &mut Option<String>,
         collection: &mut Option<String>,
     ) -> Result<()> {
         attr.parse_nested_meta(|meta| {
             if meta.path.is_ident("service") {
-                // Service is now optional for auto-registration
-                let value: LitStr = meta.value()?.parse()?;
-                *service = Some(value.value());
+                // Service is no longer used; accept but ignore for backwards compat during migration
+                let _value: LitStr = meta.value()?.parse()?;
             } else if meta.path.is_ident("collection") {
                 // Collection is now optional for auto-registration
                 let value: LitStr = meta.value()?.parse()?;
@@ -532,7 +523,6 @@ impl ParsedEntity {
                 fn entity_descriptor() -> ::snugom::types::EntityDescriptor {
                     #register_static_ident.call_once(|| {
                         let descriptor = #descriptor_static_ident.get_or_init(|| ::snugom::types::EntityDescriptor {
-                            service: <#name as ::snugom::types::SnugomModel>::SERVICE.to_string(),
                             collection: <#name as ::snugom::types::SnugomModel>::COLLECTION.to_string(),
                             version: #version,
                             id_field: Some(#id_field_lit.to_string()),
@@ -604,15 +594,21 @@ impl ParsedEntity {
                     let mut relations = self.relations;
                     let mut nested = self.nested_creates;
                     if !nested.is_empty() {
-                        ::snugom::repository::link_nested_to_parent(&descriptor, &entity_id, &mut nested);
+                        let remaps = ::snugom::repository::link_nested_to_parent(&descriptor, &entity_id, &mut nested);
+                        ::snugom::repository::apply_id_remaps(&mut relations, &remaps);
                     }
-                    let payload = ::serde_json::to_value(&entity).map_err(|err| {
+                    let mut payload = ::serde_json::to_value(&entity).map_err(|err| {
                         ::snugom::errors::ValidationError::single(
                             "__payload",
                             "serialization.failed",
                             err.to_string(),
                         )
                     })?;
+                    // Auto-populate FK fields from connect relations.
+                    // When [connect id] is used on a belongs-to relation that has a
+                    // foreign_key field, inject the connected ID into the JSON payload
+                    // so FT.SEARCH can find it.
+                    ::snugom::repository::apply_fk_from_relations(&descriptor, &relations, &mut payload);
                     let mirrors = entity.datetime_mirrors();
                     let idempotency_key = self.idempotency_key.take();
                     let idempotency_ttl = self.idempotency_ttl.take();
@@ -980,11 +976,10 @@ impl ParsedEntity {
 
             impl ::snugom::search::SearchEntity for #name {
                 fn index_definition(prefix: &str) -> ::snugom::search::IndexDefinition {
-                    let service = <#name as ::snugom::types::SnugomModel>::SERVICE;
                     let collection = <#name as ::snugom::types::SnugomModel>::COLLECTION;
                     ::snugom::search::IndexDefinition {
-                        name: format!("{}:{}:{}:idx", prefix, service, collection),
-                        prefixes: vec![format!("{}:{}:{}:", prefix, service, collection)],
+                        name: format!("{}:{}:idx", prefix, collection),
+                        prefixes: vec![format!("{}:{}:", prefix, collection)],
                         filter: None,
                         schema: &#index_schema_ident,
                     }
@@ -1022,31 +1017,22 @@ impl ParsedEntity {
     /// This generates:
     /// 1. `SnugomModel` impl for the entity
     /// 2. `inventory::submit!` call for `EntityRegistration`
-    ///
-    /// service and collection are required attributes on the entity derive.
     fn emit_auto_registration(&self) -> TokenStream2 {
         let name = &self.name;
         let name_str = name.to_string();
 
-        // Use provided service/collection or derive from entity name
-        let service = self.service.clone().unwrap_or_else(|| {
-            // Default service name: lowercase entity name
-            to_snake_case(&name.to_string())
-        });
+        // Use provided collection or derive from entity name (pluralized snake_case)
         let collection = self.collection.clone().unwrap_or_else(|| {
-            // Default collection name: pluralized lowercase entity name
             let snake = to_snake_case(&name.to_string());
             format!("{}s", snake)
         });
 
-        let service_lit = LitStr::new(&service, Span::call_site());
         let collection_lit = LitStr::new(&collection, Span::call_site());
 
         let id_field = &self.id_field;
         quote! {
             // Auto-generated SnugomModel impl
             impl ::snugom::types::SnugomModel for #name {
-                const SERVICE: &'static str = #service_lit;
                 const COLLECTION: &'static str = #collection_lit;
 
                 fn get_id(&self) -> String {
@@ -1060,7 +1046,6 @@ impl ParsedEntity {
                     type_id: ::std::any::TypeId::of::<#name>(),
                     type_name: #name_str,
                     collection_name: #collection_lit,
-                    service_name: #service_lit,
                     descriptor_fn: || <#name as ::snugom::types::EntityMetadata>::entity_descriptor(),
                 }
             }
@@ -1090,7 +1075,6 @@ impl ParsedRelation {
             ::snugom::types::RelationDescriptor {
                 alias: #alias.to_string(),
                 target: #target.to_string(),
-                target_service: None,
                 kind: #kind,
                 cascade: #cascade,
                 foreign_key: #foreign_key,
@@ -1100,49 +1084,35 @@ impl ParsedRelation {
 }
 
 impl ParsedEntity {
-    fn detect_derived_id(fields: &[ParsedField], relations: &[ParsedRelation]) -> Option<DerivedIdSpec> {
-        let id_field = fields.iter().find(|field| field.is_id)?;
-        if !matches!(id_field.ty.base, FieldBase::String) {
-            return None;
-        }
-        let id_field_name = id_field.name.clone();
+    fn build_composite_id(fields: &[ParsedField]) -> Result<Option<DerivedIdSpec>> {
+        let id_field = match fields.iter().find(|field| field.is_id) {
+            Some(f) => f,
+            None => return Ok(None),
+        };
 
-        let mut belongs_to_relations: Vec<&ParsedRelation> = relations
-            .iter()
-            .filter(|relation| matches!(relation.kind, RelationKind::BelongsTo) && relation.foreign_key.is_some())
-            .collect();
+        let Some(ref components) = id_field.composite_id_components else {
+            return Ok(None);
+        };
 
-        if belongs_to_relations.len() != 1 {
-            return None;
-        }
-
-        let relation = belongs_to_relations.pop().expect("length checked");
-        let foreign_key = relation.foreign_key.clone()?;
-        let foreign_field = fields.iter().find(|field| field.name == foreign_key)?;
-        if !matches!(foreign_field.ty.base, FieldBase::String) {
-            return None;
-        }
-
-        let mut candidates = fields
-            .iter()
-            .filter(|field| {
-                field.name.ends_with("_id")
-                    && field.name != foreign_key
-                    && field.name != "tenant_id"
-                    && field.name != id_field_name
-                    && matches!(field.ty.base, FieldBase::String)
-            })
-            .collect::<Vec<_>>();
-
-        if candidates.is_empty() {
-            return None;
+        // Validate each component field exists and is a String
+        for component in components {
+            let Some(field) = fields.iter().find(|f| f.name == *component) else {
+                return Err(Error::new(
+                    id_field.ident.span(),
+                    format!("#[snugom(id = [...])] references field `{component}` which does not exist on this struct"),
+                ));
+            };
+            if !matches!(field.ty.base, FieldBase::String) {
+                return Err(Error::new(
+                    field.ident.span(),
+                    format!("#[snugom(id = [...])] component `{component}` must be a String field"),
+                ));
+            }
         }
 
-        let suffix_field = candidates.remove(0).name.clone();
-
-        Some(DerivedIdSpec {
-            components: vec![foreign_key, suffix_field],
+        Ok(Some(DerivedIdSpec {
+            components: components.clone(),
             separator: ":".to_string(),
-        })
+        }))
     }
 }

@@ -15,7 +15,7 @@ use crate::{SnugomClient, SnugomEntity, snugom_create};
 
 /// A blog post that belongs to an author.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "rel_posts")]
+#[snugom(schema = 1, collection = "rel_posts")]
 struct BlogPost {
     #[snugom(id)]
     id: String,
@@ -33,7 +33,7 @@ struct BlogPost {
 
 /// An author who can have many posts.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "rel_authors")]
+#[snugom(schema = 1, collection = "rel_authors")]
 struct Author {
     #[snugom(id)]
     id: String,
@@ -53,7 +53,7 @@ struct Author {
 
 /// A comment belongs to both a post and an author.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "rel_comments")]
+#[snugom(schema = 1, collection = "rel_comments")]
 struct Comment {
     #[snugom(id)]
     id: String,
@@ -88,29 +88,44 @@ pub async fn run() -> Result<()> {
     let mut comments = client.comments();
 
     // ============ Create Author ============
-    let author_id = snugom_create!(client, Author {
-        name: "Jane Doe".to_string(),
-        email: "jane@example.com".to_string(),
-        created_at: Utc::now(),
-    }).await?.id;
+    let author_id = snugom_create!(
+        client,
+        Author {
+            name: "Jane Doe".to_string(),
+            email: "jane@example.com".to_string(),
+            created_at: Utc::now(),
+        }
+    )
+    .await?
+    .id;
 
     let author = authors.get_or_error(&author_id).await?;
 
     // ============ Create Posts with Relation ============
     // Posts belong to the author via author_id
-    let post1_id = snugom_create!(client, BlogPost {
-        title: "Introduction to Rust".to_string(),
-        content: "Rust is a systems programming language...".to_string(),
-        author_id: author.id.clone(), // Set the relation
-        created_at: Utc::now(),
-    }).await?.id;
+    let post1_id = snugom_create!(
+        client,
+        BlogPost {
+            title: "Introduction to Rust".to_string(),
+            content: "Rust is a systems programming language...".to_string(),
+            author_id: author.id.clone(), // Set the relation
+            created_at: Utc::now(),
+        }
+    )
+    .await?
+    .id;
 
-    let post2_id = snugom_create!(client, BlogPost {
-        title: "Advanced Rust Patterns".to_string(),
-        content: "Let's explore some advanced patterns...".to_string(),
-        author_id: author.id.clone(),
-        created_at: Utc::now(),
-    }).await?.id;
+    let post2_id = snugom_create!(
+        client,
+        BlogPost {
+            title: "Advanced Rust Patterns".to_string(),
+            content: "Let's explore some advanced patterns...".to_string(),
+            author_id: author.id.clone(),
+            created_at: Utc::now(),
+        }
+    )
+    .await?
+    .id;
 
     let post1 = posts.get_or_error(&post1_id).await?;
     let post2 = posts.get_or_error(&post2_id).await?;
@@ -121,12 +136,17 @@ pub async fn run() -> Result<()> {
 
     // ============ Create Comments with Multiple Relations ============
     // Comments belong to both a post and an author
-    let comment_id = snugom_create!(client, Comment {
-        content: "Great article!".to_string(),
-        post_id: post1.id.clone(),
-        author_id: author.id.clone(),
-        created_at: Utc::now(),
-    }).await?.id;
+    let comment_id = snugom_create!(
+        client,
+        Comment {
+            content: "Great article!".to_string(),
+            post_id: post1.id.clone(),
+            author_id: author.id.clone(),
+            created_at: Utc::now(),
+        }
+    )
+    .await?
+    .id;
 
     let comment = comments.get_or_error(&comment_id).await?;
     assert_eq!(comment.post_id, post1.id);

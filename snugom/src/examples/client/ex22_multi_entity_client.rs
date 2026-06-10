@@ -15,7 +15,7 @@ use crate::{SnugomClient, SnugomEntity, snugom_create, snugom_update};
 
 /// A user in the system.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "shop_users")]
+#[snugom(schema = 1, collection = "shop_users")]
 struct User {
     #[snugom(id)]
     id: String,
@@ -30,7 +30,7 @@ struct User {
 
 /// A product in the catalog.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "products")]
+#[snugom(schema = 1, collection = "products")]
 struct Product {
     #[snugom(id)]
     id: String,
@@ -46,7 +46,7 @@ struct Product {
 
 /// An order placed by a user.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "shop_orders")]
+#[snugom(schema = 1, collection = "shop_orders")]
 struct Order {
     #[snugom(id)]
     id: String,
@@ -67,7 +67,7 @@ struct Order {
 
 /// A review for a product.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "reviews")]
+#[snugom(schema = 1, collection = "reviews")]
 struct Review {
     #[snugom(id)]
     id: String,
@@ -107,42 +107,62 @@ pub async fn run() -> Result<()> {
     // ============ Create Entities Across Collections ============
 
     // Create a user
-    let user_id = snugom_create!(client, User {
-        name: "Alice".to_string(),
-        email: "alice@shop.com".to_string(),
-        created_at: Utc::now(),
-    }).await?.id;
+    let user_id = snugom_create!(
+        client,
+        User {
+            name: "Alice".to_string(),
+            email: "alice@shop.com".to_string(),
+            created_at: Utc::now(),
+        }
+    )
+    .await?
+    .id;
 
     let user = users.get_or_error(&user_id).await?;
 
     // Create products
-    let laptop_id = snugom_create!(client, Product {
-        name: "Laptop Pro".to_string(),
-        price: 129900,
-        category: "electronics".to_string(),
-        created_at: Utc::now(),
-    }).await?.id;
+    let laptop_id = snugom_create!(
+        client,
+        Product {
+            name: "Laptop Pro".to_string(),
+            price: 129900,
+            category: "electronics".to_string(),
+            created_at: Utc::now(),
+        }
+    )
+    .await?
+    .id;
 
     let laptop = products.get_or_error(&laptop_id).await?;
 
-    let mouse_id = snugom_create!(client, Product {
-        name: "Wireless Mouse".to_string(),
-        price: 4999,
-        category: "electronics".to_string(),
-        created_at: Utc::now(),
-    }).await?.id;
+    let mouse_id = snugom_create!(
+        client,
+        Product {
+            name: "Wireless Mouse".to_string(),
+            price: 4999,
+            category: "electronics".to_string(),
+            created_at: Utc::now(),
+        }
+    )
+    .await?
+    .id;
 
     let mouse = products.get_or_error(&mouse_id).await?;
 
     // ============ Cross-Entity Workflow: Place Order ============
 
     // Create an order for the user
-    let order_id = snugom_create!(client, Order {
-        user_id: user.id.clone(),
-        status: "pending".to_string(),
-        total: laptop.price + mouse.price,
-        created_at: Utc::now(),
-    }).await?.id;
+    let order_id = snugom_create!(
+        client,
+        Order {
+            user_id: user.id.clone(),
+            status: "pending".to_string(),
+            total: laptop.price + mouse.price,
+            created_at: Utc::now(),
+        }
+    )
+    .await?
+    .id;
 
     let order = orders.get_or_error(&order_id).await?;
 
@@ -152,23 +172,29 @@ pub async fn run() -> Result<()> {
             connect laptop.id.clone(),
             connect mouse.id.clone(),
         ],
-    }).await?;
+    })
+    .await?;
 
     // Update order status
     snugom_update!(client, Order(entity_id = &order.id) {
         status: "confirmed".to_string(),
-    }).await?;
+    })
+    .await?;
 
     // ============ Cross-Entity Workflow: Add Review ============
 
     // User reviews the laptop
-    snugom_create!(client, Review {
-        user_id: user.id.clone(),
-        product_id: laptop.id.clone(),
-        rating: 5,
-        content: "Excellent laptop, highly recommended!".to_string(),
-        created_at: Utc::now(),
-    }).await?;
+    snugom_create!(
+        client,
+        Review {
+            user_id: user.id.clone(),
+            product_id: laptop.id.clone(),
+            rating: 5,
+            content: "Excellent laptop, highly recommended!".to_string(),
+            created_at: Utc::now(),
+        }
+    )
+    .await?;
 
     // ============ Query Across Collections ============
 

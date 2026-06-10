@@ -7,7 +7,7 @@ use super::support;
 use crate::{SnugomEntity, repository::Repo};
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "examples", collection = "blogs")]
+#[snugom(schema = 1, collection = "blogs")]
 struct Blog {
     #[snugom(id)]
     id: String,
@@ -17,14 +17,14 @@ struct Blog {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "examples", collection = "posts")]
+#[snugom(schema = 1, collection = "posts")]
 struct BlogPost {
     #[snugom(id)]
     id: String,
     #[snugom(created_at)]
     created_at: chrono::DateTime<Utc>,
     title: String,
-    #[snugom(relation(cascade = "delete"))]
+    #[snugom(relation(target = "blogs", alias = "blog", cascade = "delete"))]
     blog_id: String,
 }
 
@@ -36,7 +36,10 @@ pub async fn run() -> Result<()> {
     let post_repo: Repo<BlogPost> = Repo::new(prefix);
 
     let blog = blog_repo
-        .create_with_conn(&mut conn, Blog::validation_builder().name("Rust Notes".to_string()).created_at(Utc::now()))
+        .create_with_conn(
+            &mut conn,
+            Blog::validation_builder().name("Rust Notes".to_string()).created_at(Utc::now()),
+        )
         .await?;
     let blog_id = blog.id.clone();
 

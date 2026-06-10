@@ -24,7 +24,9 @@ pub async fn run() -> Result<()> {
     println!("╚═══════════════════════════════════════════════════════════╝\n");
 
     // Connect to Redis
-    let client = Client::open("redis://127.0.0.1/")?;
+    let redis_url = std::env::var("TEST_REDIS_URL")
+        .expect("TEST_REDIS_URL must be set to run examples");
+    let client = Client::open(redis_url.as_str())?;
     let conn = client.get_connection_manager().await?;
 
     // Create unique namespace for this run

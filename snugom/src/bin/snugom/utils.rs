@@ -3,9 +3,8 @@ use chrono::{DateTime, Utc};
 /// Format a Unix timestamp to a human-readable string
 #[allow(dead_code)]
 pub fn format_timestamp(ts: u64) -> String {
-    let dt = DateTime::<Utc>::from_timestamp(ts as i64, 0).unwrap_or_else(|| {
-        DateTime::<Utc>::from_timestamp(0, 0).expect("Epoch timestamp should be valid")
-    });
+    let dt = DateTime::<Utc>::from_timestamp(ts as i64, 0)
+        .unwrap_or_else(|| DateTime::<Utc>::from_timestamp(0, 0).expect("Epoch timestamp should be valid"));
     dt.format("%Y-%m-%d %H:%M:%S UTC").to_string()
 }
 
@@ -51,7 +50,13 @@ pub fn migration_filename(name: &str) -> String {
 #[allow(dead_code)]
 pub fn sanitize_identifier(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 

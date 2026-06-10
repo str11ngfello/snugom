@@ -64,6 +64,7 @@ async fn builder_update_disconnects_follower() {
 async fn builder_delete_detaches_followers() {
     let mut conn = redis_conn().await;
     let ns = TestNamespace::unique();
+    ns.register_all_descriptors();
     let users: Repo<UserRecord> = ns.user_repo();
 
     let created_at = Utc::now();
@@ -127,6 +128,7 @@ async fn builder_delete_detaches_followers() {
 async fn builder_delete_follower_detaches_from_leaders() {
     let mut conn = redis_conn().await;
     let ns = TestNamespace::unique();
+    ns.register_all_descriptors();
     let users: Repo<UserRecord> = ns.user_repo();
 
     let created_at = Utc::now();

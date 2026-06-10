@@ -12,7 +12,11 @@ extern crate self as snugom;
 ///
 /// Panics at compile time if any relation target is not in the valid collections list.
 /// The panic message includes the entity name and the invalid target.
-pub const fn validate_relation_targets(entity_name: &str, relation_targets: &[&str], valid_collections: &[&str]) {
+pub const fn validate_relation_targets(
+    entity_name: &str,
+    relation_targets: &[&str],
+    valid_collections: &[&str],
+) {
     let mut i = 0;
     while i < relation_targets.len() {
         let target = relation_targets[i];
@@ -34,7 +38,10 @@ pub const fn validate_relation_targets(entity_name: &str, relation_targets: &[&s
 }
 
 /// Const string equality comparison
-const fn const_str_eq(a: &str, b: &str) -> bool {
+const fn const_str_eq(
+    a: &str,
+    b: &str,
+) -> bool {
     let a_bytes = a.as_bytes();
     let b_bytes = b.as_bytes();
     if a_bytes.len() != b_bytes.len() {
@@ -52,7 +59,11 @@ const fn const_str_eq(a: &str, b: &str) -> bool {
 
 /// Const panic with helpful error message about invalid relation target
 #[allow(unused_variables)]
-const fn const_panic_invalid_target(entity_name: &str, target: &str, valid_collections: &[&str]) -> ! {
+const fn const_panic_invalid_target(
+    entity_name: &str,
+    target: &str,
+    valid_collections: &[&str],
+) -> ! {
     // Build a helpful error message
     // Note: const panic formatting is limited, so we use a simple approach
     // The entity_name, target, and valid_collections are passed for future use
@@ -73,7 +84,10 @@ const fn const_panic_invalid_target(entity_name: &str, target: &str, valid_colle
 ///
 /// Panics at compile time if the entity has no indexed fields.
 #[allow(unused_variables)]
-pub const fn validate_entity_has_indexed_fields(entity_name: &str, has_indexed_fields: bool) {
+pub const fn validate_entity_has_indexed_fields(
+    entity_name: &str,
+    has_indexed_fields: bool,
+) {
     if !has_indexed_fields {
         panic!(
             "Entity has no indexed fields. Entities must have at least one \
@@ -102,14 +116,14 @@ pub use client::{BulkCreateResult, Client, CollectionHandle, EntityRegistration}
 pub use errors::*;
 pub use registry::*;
 pub use repository::*;
-pub use snugom_macros::{
-    SearchableFilters, SnugomClient, SnugomEntity, snug, snugom_create, snugom_delete,
-    snugom_get_or_create, snugom_update, snugom_upsert,
-};
 pub use search::{SearchQuery, SortOrder};
+pub use snugom_macros::{
+    SearchableFilters, SnugomClient, SnugomEntity, SnugomResponse, snug, snugom_create, snugom_delete, snugom_find,
+    snugom_find_many, snugom_get_or_create, snugom_update, snugom_upsert,
+};
 pub use types::{
-    DEFAULT_RELATION_LIMIT, MAX_RELATION_LIMIT, RelationData, RelationQueryOptions, RelationState,
-    SnugomModel,
+    DEFAULT_RELATION_LIMIT, MAX_RELATION_LIMIT, RelationData, RelationQueryOptions, RelationState, SnugomModel,
+    resolve_foreign_key,
 };
 
 // Re-export redis types so users don't need to depend on a specific redis version
@@ -122,7 +136,10 @@ pub use inventory;
 /// Delete all keys matching a pattern (for test cleanup).
 ///
 /// This performs a SCAN + DEL operation to safely delete keys without blocking Redis.
-pub async fn cleanup_pattern(conn: &mut ConnectionManager, pattern: &str) -> Result<u64, RepoError> {
+pub async fn cleanup_pattern(
+    conn: &mut ConnectionManager,
+    pattern: &str,
+) -> Result<u64, RepoError> {
     const SCAN_COUNT: usize = 1000;
     let mut cursor: u64 = 0;
     let mut total_deleted: u64 = 0;

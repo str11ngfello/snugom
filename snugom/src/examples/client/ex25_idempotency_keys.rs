@@ -17,7 +17,7 @@ use crate::{SnugomClient, SnugomEntity};
 /// Uses idempotency keys to ensure payments are not duplicated.
 /// Note: Idempotency key is passed to the builder during creation, not stored on the entity.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "payments")]
+#[snugom(schema = 1, collection = "payments")]
 struct Payment {
     #[snugom(id)]
     id: String,
@@ -36,7 +36,7 @@ struct Payment {
 /// An order that can be retried.
 /// Note: Idempotency key is passed to the builder during creation, not stored on the entity.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "idem_orders")]
+#[snugom(schema = 1, collection = "idem_orders")]
 struct Order {
     #[snugom(id)]
     id: String,
@@ -93,10 +93,7 @@ pub async fn run() -> Result<()> {
             )
             .await?;
 
-        assert_eq!(
-            payment1_id.id, payment2_id.id,
-            "same idempotency key should return same ID"
-        );
+        assert_eq!(payment1_id.id, payment2_id.id, "same idempotency key should return same ID");
 
         // Verify only one payment exists
         let all_payments = payments.find_many(crate::SearchQuery::default()).await?;

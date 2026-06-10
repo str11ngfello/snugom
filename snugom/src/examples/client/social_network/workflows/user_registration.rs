@@ -5,8 +5,8 @@
 use anyhow::Result;
 use chrono::Utc;
 
-use crate::CollectionHandle;
 use super::super::models::User;
+use crate::CollectionHandle;
 
 /// Register a new user.
 ///
@@ -102,12 +102,7 @@ pub async fn verify_user(
     user_id: &str,
 ) -> Result<User> {
     users
-        .update(
-            User::patch_builder()
-                .entity_id(user_id)
-                .verified(true)
-                .updated_at(Utc::now()),
-        )
+        .update(User::patch_builder().entity_id(user_id).verified(true).updated_at(Utc::now()))
         .await?;
 
     users.get_or_error(user_id).await.map_err(|e| e.into())
@@ -209,13 +204,7 @@ pub async fn run(users: &mut CollectionHandle<User>) -> Result<()> {
     println!("    Search for 'Alice' found {} users", results.len());
 
     // Register more users for later workflows
-    register_user(
-        users,
-        "bob".to_string(),
-        "bob@example.com".to_string(),
-        "Bob Smith".to_string(),
-    )
-    .await?;
+    register_user(users, "bob".to_string(), "bob@example.com".to_string(), "Bob Smith".to_string()).await?;
 
     register_user(
         users,

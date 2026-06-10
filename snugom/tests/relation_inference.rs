@@ -1,17 +1,18 @@
-//! Tests for field-based relation inference
+//! Tests for field-based relation declaration.
 //!
-//! This demonstrates the new ergonomic syntax for declaring relations using
-//! field attributes instead of container-level attributes.
+//! Canonical convention: a belongs_to relation requires an explicit `target`
+//! collection (no name-based pluralization inference). The relation alias
+//! defaults to the foreign-key field name and can be overridden with `alias`.
 
 use serde::{Deserialize, Serialize};
-use snugom::{types::EntityMetadata, SnugomEntity};
+use snugom::{SnugomEntity, types::EntityMetadata};
 
-/// Example using belongs_to inference from {entity}_id fields
-mod belongs_to_inference {
+/// belongs_to with explicit target; alias defaults to the field name.
+mod belongs_to_basic {
     use super::*;
 
     #[derive(SnugomEntity, Serialize, Deserialize)]
-    #[snugom(schema = 1, service = "ri", collection = "organizations")]
+    #[snugom(schema = 1, collection = "organizations")]
     pub struct Organization {
         #[snugom(id)]
         pub id: String,
@@ -20,41 +21,40 @@ mod belongs_to_inference {
     }
 
     #[derive(SnugomEntity, Serialize, Deserialize)]
-    #[snugom(schema = 1, service = "ri", collection = "teams")]
+    #[snugom(schema = 1, collection = "teams")]
     pub struct Team {
         #[snugom(id)]
         pub id: String,
         #[snugom(filterable(tag))]
         pub name: String,
 
-        // belongs_to inferred from {entity}_id pattern
-        #[snugom(relation, filterable(tag))]
+        // belongs_to: explicit target required; alias defaults to "organization_id".
+        #[snugom(relation(target = "organizations"), filterable(tag))]
         pub organization_id: String,
     }
 
     #[derive(SnugomEntity, Serialize, Deserialize)]
-    #[snugom(schema = 1, service = "ri", collection = "employees")]
+    #[snugom(schema = 1, collection = "employees")]
     pub struct Employee {
         #[snugom(id)]
         pub id: String,
         #[snugom(filterable(tag))]
         pub name: String,
 
-        // belongs_to inferred from team_id field
-        #[snugom(relation, filterable(tag))]
+        #[snugom(relation(target = "teams"), filterable(tag))]
         pub team_id: String,
 
-        // Additional foreign key without relation (not all _id fields are relations)
+        // A foreign key without #[snugom(relation)] is NOT a relation.
         pub department_id: String,
     }
 }
 
-/// Example with explicit cascade policy on belongs_to
+/// belongs_to with explicit cascade policy.
 mod cascade_policy {
     use super::*;
 
     #[derive(SnugomEntity, Serialize, Deserialize)]
-    #[snugom(schema = 1, service = "cp", collection = "parents")]
+    #[snugom(schema = 1, collection = "parents")]
     pub struct Parent {
         #[snugom(id)]
         pub id: String,
@@ -63,26 +63,24 @@ mod cascade_policy {
     }
 
     #[derive(SnugomEntity, Serialize, Deserialize)]
-    #[snugom(schema = 1, service = "cp", collection = "children")]
+    #[snugom(schema = 1, collection = "children")]
     pub struct Child {
         #[snugom(id)]
         pub id: String,
         #[snugom(filterable(tag))]
         pub value: String,
 
-        // belongs_to with explicit cascade policy
-        #[snugom(relation(cascade = "delete"), filterable(tag))]
+        #[snugom(relation(target = "parents", cascade = "delete"), filterable(tag))]
         pub parent_id: String,
     }
 }
 
-
-/// Example with explicit target and alias
-mod explicit_target {
+/// Explicit alias override (e.g. when the field name isn't the desired alias).
+mod explicit_alias {
     use super::*;
 
     #[derive(SnugomEntity, Serialize, Deserialize)]
-    #[snugom(schema = 1, service = "et", collection = "authors")]
+    #[snugom(schema = 1, collection = "authors")]
     pub struct Author {
         #[snugom(id)]
         pub id: String,
@@ -91,27 +89,27 @@ mod explicit_target {
     }
 
     #[derive(SnugomEntity, Serialize, Deserialize)]
-    #[snugom(schema = 1, service = "et", collection = "books")]
+    #[snugom(schema = 1, collection = "books")]
     pub struct Book {
         #[snugom(id)]
         pub id: String,
         #[snugom(filterable(tag))]
         pub title: String,
 
-        // Explicit target and alias when naming doesn't follow convention
         #[snugom(relation(target = "authors", alias = "written_by"), filterable(tag))]
         pub author_id: String,
     }
 }
 
 #[test]
-fn test_belongs_to_inferred_from_field_name() {
-    let descriptor = belongs_to_inference::Team::entity_descriptor();
+fn belongs_to_uses_explicit_target_and_stripped_alias() {
+    let descriptor = belongs_to_basic::Team::entity_descriptor();
 
-    // Should have a belongs_to relation to organizations
-    let org_rel = descriptor.relations.iter()
+    let org_rel = descriptor
+        .relations
+        .iter()
         .find(|r| r.alias == "organization")
-        .expect("should have organization relation");
+        .expect("alias defaults to the field name with a trailing _id stripped");
 
     assert_eq!(org_rel.target, "organizations");
     assert!(matches!(org_rel.kind, snugom::types::RelationKind::BelongsTo));
@@ -119,57 +117,61 @@ fn test_belongs_to_inferred_from_field_name() {
 }
 
 #[test]
-fn test_multiple_belongs_to_relations() {
-    let emp_desc = belongs_to_inference::Employee::entity_descriptor();
+fn only_annotated_foreign_keys_become_relations() {
+    let emp_desc = belongs_to_basic::Employee::entity_descriptor();
 
-    // Should have team relation (from #[snugom(relation)] on team_id)
-    let team_rel = emp_desc.relations.iter()
+    let team_rel = emp_desc
+        .relations
+        .iter()
         .find(|r| r.alias == "team")
         .expect("should have team relation");
-
     assert_eq!(team_rel.target, "teams");
     assert!(matches!(team_rel.kind, snugom::types::RelationKind::BelongsTo));
     assert_eq!(team_rel.foreign_key, Some("team_id".to_string()));
 
-    // Should NOT have department relation (department_id doesn't have #[snugom(relation)])
-    let dept_rel = emp_desc.relations.iter()
-        .find(|r| r.alias == "department");
-    assert!(dept_rel.is_none(), "department_id without #[snugom(relation)] should not create relation");
+    // department_id has no #[snugom(relation)] -> not a relation.
+    assert!(
+        emp_desc.relations.iter().all(|r| r.alias != "department"),
+        "an unannotated foreign key must not create a relation"
+    );
 }
 
 #[test]
-fn test_cascade_policy_from_field() {
+fn cascade_policy_is_read_from_the_attribute() {
     let child_desc = cascade_policy::Child::entity_descriptor();
 
-    let parent_rel = child_desc.relations.iter()
+    let parent_rel = child_desc
+        .relations
+        .iter()
         .find(|r| r.alias == "parent")
         .expect("should have parent relation");
 
-    // Should have cascade delete
     assert!(matches!(parent_rel.cascade, snugom::types::CascadePolicy::Delete));
 }
 
-
 #[test]
-fn test_explicit_target_and_alias() {
-    let book_desc = explicit_target::Book::entity_descriptor();
+fn alias_can_be_overridden() {
+    let book_desc = explicit_alias::Book::entity_descriptor();
 
-    let author_rel = book_desc.relations.iter()
+    let author_rel = book_desc
+        .relations
+        .iter()
         .find(|r| r.alias == "written_by")
-        .expect("should have written_by relation");
+        .expect("explicit alias overrides the field-name default");
 
     assert_eq!(author_rel.target, "authors");
     assert_eq!(author_rel.foreign_key, Some("author_id".to_string()));
 }
 
 #[test]
-fn test_default_cascade_is_none() {
-    let team_desc = belongs_to_inference::Team::entity_descriptor();
+fn default_cascade_is_none() {
+    let team_desc = belongs_to_basic::Team::entity_descriptor();
 
-    let org_rel = team_desc.relations.iter()
+    let org_rel = team_desc
+        .relations
+        .iter()
         .find(|r| r.alias == "organization")
         .expect("should have organization relation");
 
-    // Default cascade should be None
     assert!(matches!(org_rel.cascade, snugom::types::CascadePolicy::None));
 }

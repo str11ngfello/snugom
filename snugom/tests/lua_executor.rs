@@ -1,3 +1,5 @@
+mod common;
+
 use chrono::{DateTime, Utc};
 use redis::{AsyncCommands, aio::ConnectionManager};
 use serde::{Deserialize, Serialize};
@@ -13,7 +15,7 @@ use snugom::{
 };
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "tl", collection = "articles")]
+#[snugom(schema = 1, collection = "articles")]
 struct ArticleRecord {
     #[snugom(id)]
     id: String,
@@ -25,7 +27,7 @@ struct ArticleRecord {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "arr", collection = "items")]
+#[snugom(schema = 1, collection = "items")]
 struct ArrayRecord {
     #[snugom(id)]
     id: String,
@@ -34,8 +36,7 @@ struct ArrayRecord {
 }
 
 async fn redis_connection() -> ConnectionManager {
-    let client = redis::Client::open("redis://127.0.0.1/").expect("redis client");
-    client.get_connection_manager().await.expect("connection manager")
+    common::redis_conn().await
 }
 
 #[tokio::test]
@@ -121,8 +122,12 @@ async fn mutate_relation_set() {
     assert!(members.contains(&String::from("two")));
 
     {
-        let relation =
-            RelationPlan::with_left("articles_followers_ids", "builder_articles", Vec::new(), vec![String::from("one")]);
+        let relation = RelationPlan::with_left(
+            "articles_followers_ids",
+            "builder_articles",
+            Vec::new(),
+            vec![String::from("one")],
+        );
         let mut executor = RedisExecutor::new(&mut conn);
         repo.mutate_relations(&mut executor, vec![relation])
             .await
@@ -268,7 +273,8 @@ async fn create_with_relation_connect() {
     assert!(members.contains(&"follower-1".to_string()));
 
     {
-        let relation = RelationPlan::with_left("articles_followers_ids", "rel", Vec::new(), vec!["follower-1".to_string()]);
+        let relation =
+            RelationPlan::with_left("articles_followers_ids", "rel", Vec::new(), vec!["follower-1".to_string()]);
         let mut executor = RedisExecutor::new(&mut conn);
         repo.mutate_relations(&mut executor, vec![relation])
             .await

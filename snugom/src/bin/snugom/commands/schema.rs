@@ -6,7 +6,7 @@ use redis::aio::ConnectionManager;
 use serde_json::Value;
 
 use crate::context::ProjectContext;
-use crate::differ::{diff_schemas, load_latest_snapshots, ChangeType, EntityChange};
+use crate::differ::{ChangeType, EntityChange, diff_schemas, load_latest_snapshots};
 use crate::examples::ExampleGroup;
 use crate::output::OutputManager;
 use crate::scanner::{discover_entities, parse_entity_file};
@@ -28,9 +28,7 @@ pub const EXAMPLES: &[ExampleGroup] = &[
     },
     ExampleGroup {
         title: "Schema Validation",
-        commands: &[
-            "snugom schema validate guilds --field name    # Check for duplicate values",
-        ],
+        commands: &["snugom schema validate guilds --field name    # Check for duplicate values"],
     },
 ];
 
@@ -79,10 +77,14 @@ pub async fn handle_schema_commands(
     }
 
     match command {
-        SchemaCommands::Status { collection } => {
+        SchemaCommands::Status {
+            collection,
+        } => {
             handle_status(&ctx, collection.as_deref(), output).await?;
         }
-        SchemaCommands::Diff { entity } => {
+        SchemaCommands::Diff {
+            entity,
+        } => {
             handle_diff(&ctx, entity.as_deref(), output).await?;
         }
         SchemaCommands::Validate {
@@ -105,17 +107,14 @@ async fn handle_status(
     output.heading("Schema Status");
 
     // Get Redis URL
-    let redis_url = ctx.redis_url().context(
-        "REDIS_URL environment variable not set. Set it to connect to Redis.",
-    )?;
+    let redis_url = ctx
+        .redis_url()
+        .context("REDIS_URL environment variable not set. Set it to connect to Redis.")?;
 
     // Connect to Redis
     output.progress("Connecting to Redis...");
-    let client = redis::Client::open(redis_url.as_str())
-        .context("Failed to create Redis client")?;
-    let mut conn = ConnectionManager::new(client)
-        .await
-        .context("Failed to connect to Redis")?;
+    let client = redis::Client::open(redis_url.as_str()).context("Failed to create Redis client")?;
+    let mut conn = ConnectionManager::new(client).await.context("Failed to connect to Redis")?;
     output.clear_line();
     output.success("Connected to Redis");
 
@@ -125,16 +124,14 @@ async fn handle_status(
     } else {
         // Discover collections from entity files
         output.progress("Discovering collections from entities...");
-        let discovered = discover_entities(&ctx.project_root)
-            .context("Failed to discover entity files")?;
+        let discovered = discover_entities(&ctx.project_root).context("Failed to discover entity files")?;
 
         let mut collections = Vec::new();
         for file in &discovered {
             if let Ok(schemas) = parse_entity_file(&file.path, &file.relative_path) {
                 for schema in schemas {
                     // Use entity name as collection if not explicitly set
-                    let coll_name = schema.collection.clone()
-                        .unwrap_or_else(|| to_snake_case(&schema.entity));
+                    let coll_name = schema.collection.clone().unwrap_or_else(|| to_snake_case(&schema.entity));
                     collections.push(coll_name);
                 }
             }
@@ -150,10 +147,7 @@ async fn handle_status(
         collections
     };
 
-    output.info(&format!(
-        "Scanning {} collection(s)...",
-        collections_to_scan.len()
-    ));
+    output.info(&format!("Scanning {} collection(s)...", collections_to_scan.len()));
 
     // Scan each collection
     let mut total_documents = 0u64;
@@ -178,9 +172,7 @@ async fn handle_status(
 
             for (version, count) in versions {
                 let pct = (*count as f64 / stats.total as f64) * 100.0;
-                output.bullet(&format!(
-                    "v{version}: {count} document(s) ({pct:.1}%)"
-                ));
+                output.bullet(&format!("v{version}: {count} document(s) ({pct:.1}%)"));
             }
 
             if stats.without_version > 0 {
@@ -200,9 +192,7 @@ async fn handle_status(
         output.bullet(&format!("Documents with schema version: {total_with_version}"));
     }
     if total_without_version > 0 {
-        output.warning(&format!(
-            "Documents without schema version: {total_without_version}"
-        ));
+        output.warning(&format!("Documents without schema version: {total_without_version}"));
         output.info("Run 'snugom migrate deploy' to apply pending migrations");
     } else if total_documents > 0 {
         output.success("All documents have schema versions");
@@ -323,8 +313,7 @@ async fn handle_diff(
 
     // Step 1: Discover entities
     output.progress("Discovering SnugomEntity types...");
-    let discovered = discover_entities(&ctx.project_root)
-        .context("Failed to discover entity files")?;
+    let discovered = discover_entities(&ctx.project_root).context("Failed to discover entity files")?;
     output.clear_line();
 
     if discovered.is_empty() {
@@ -351,10 +340,7 @@ async fn handle_diff(
             }
             Err(err) => {
                 output.clear_line();
-                output.warning(&format!(
-                    "Failed to parse {}: {err}",
-                    file.relative_path
-                ));
+                output.warning(&format!("Failed to parse {}: {err}", file.relative_path));
             }
         }
     }
@@ -373,8 +359,7 @@ async fn handle_diff(
 
     // Step 3: Load snapshots
     output.progress("Loading existing snapshots...");
-    let existing_snapshots = load_latest_snapshots(&ctx.schemas_dir)
-        .context("Failed to load existing snapshots")?;
+    let existing_snapshots = load_latest_snapshots(&ctx.schemas_dir).context("Failed to load existing snapshots")?;
     output.clear_line();
 
     output.info(&format!("Found {} existing snapshot(s)", existing_snapshots.len()));
@@ -393,10 +378,7 @@ async fn handle_diff(
         if diff.is_new() {
             has_changes = true;
             new_entities += 1;
-            output.bullet(&format!(
-                "{} (NEW) - will be baseline v{}",
-                diff.entity, diff.new_version
-            ));
+            output.bullet(&format!("{} (NEW) - will be baseline v{}", diff.entity, diff.new_version));
             output.info(&format!("    Source: {}", diff.source_file));
         } else if diff.has_changes() {
             has_changes = true;
@@ -497,17 +479,14 @@ async fn handle_validate(
     output.heading(&format!("Validate Uniqueness: {collection}.{field}"));
 
     // Get Redis URL
-    let redis_url = ctx.redis_url().context(
-        "REDIS_URL environment variable not set. Set it to connect to Redis.",
-    )?;
+    let redis_url = ctx
+        .redis_url()
+        .context("REDIS_URL environment variable not set. Set it to connect to Redis.")?;
 
     // Connect to Redis
     output.progress("Connecting to Redis...");
-    let client = redis::Client::open(redis_url.as_str())
-        .context("Failed to create Redis client")?;
-    let mut conn = ConnectionManager::new(client)
-        .await
-        .context("Failed to connect to Redis")?;
+    let client = redis::Client::open(redis_url.as_str()).context("Failed to create Redis client")?;
+    let mut conn = ConnectionManager::new(client).await.context("Failed to connect to Redis")?;
     output.clear_line();
     output.success("Connected to Redis");
 
@@ -541,10 +520,7 @@ async fn handle_validate(
         output.heading("Duplicate Values");
         let max_show = 10;
         for (i, dup) in validation.duplicates.iter().take(max_show).enumerate() {
-            output.bullet(&format!(
-                "{}: \"{}\" appears {} time(s)",
-                i + 1, dup.value, dup.count
-            ));
+            output.bullet(&format!("{}: \"{}\" appears {} time(s)", i + 1, dup.value, dup.count));
             // Show some document keys
             let keys_preview: Vec<_> = dup.document_keys.iter().take(3).collect();
             for key in keys_preview {
@@ -640,26 +616,24 @@ async fn validate_field_uniqueness(
             if let Some(value_json) = value_result {
                 // JSON.GET returns an array
                 if let Ok(values) = serde_json::from_str::<Vec<Value>>(&value_json)
-                    && let Some(value) = values.first() {
-                        let value_str = match value {
-                            Value::String(s) => s.clone(),
-                            Value::Number(n) => n.to_string(),
-                            Value::Bool(b) => b.to_string(),
-                            Value::Null => continue, // Skip null values
-                            _ => serde_json::to_string(value).unwrap_or_default(),
-                        };
+                    && let Some(value) = values.first()
+                {
+                    let value_str = match value {
+                        Value::String(s) => s.clone(),
+                        Value::Number(n) => n.to_string(),
+                        Value::Bool(b) => b.to_string(),
+                        Value::Null => continue, // Skip null values
+                        _ => serde_json::to_string(value).unwrap_or_default(),
+                    };
 
-                        let normalized_value = if case_insensitive {
-                            value_str.to_lowercase()
-                        } else {
-                            value_str
-                        };
+                    let normalized_value = if case_insensitive {
+                        value_str.to_lowercase()
+                    } else {
+                        value_str
+                    };
 
-                        value_map
-                            .entry(normalized_value)
-                            .or_default()
-                            .push(key.clone());
-                    }
+                    value_map.entry(normalized_value).or_default().push(key.clone());
+                }
             }
         }
 

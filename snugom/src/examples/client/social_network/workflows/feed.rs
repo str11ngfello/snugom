@@ -4,8 +4,8 @@
 
 use anyhow::Result;
 
-use crate::{CollectionHandle, SortOrder};
 use super::super::models::{Follow, Post, User};
+use crate::{CollectionHandle, SortOrder};
 
 /// Feed item with additional context.
 #[derive(Debug)]
@@ -42,9 +42,7 @@ pub async fn get_home_feed(
 
     // Build a filter for posts from followed users
     // Note: In a real system, you'd use a more efficient query
-    let following_ids: Vec<String> = following.items.iter()
-        .map(|f| f.following_id.clone())
-        .collect();
+    let following_ids: Vec<String> = following.items.iter().map(|f| f.following_id.clone()).collect();
 
     let mut feed_items = Vec::new();
 
@@ -263,9 +261,11 @@ pub async fn run(
     println!("    Bob's home feed: {} posts", home_feed.len());
 
     for item in home_feed.iter().take(3) {
-        println!("      - \"{}\" by @{}",
+        println!(
+            "      - \"{}\" by @{}",
             &item.post.content[..30.min(item.post.content.len())],
-            item.author.username);
+            item.author.username
+        );
     }
 
     // Get explore feed (trending posts)

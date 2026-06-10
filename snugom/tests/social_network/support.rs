@@ -11,7 +11,7 @@ pub(crate) use snugom::{
 pub(crate) use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(SnugomEntity, serde::Serialize, serde::Deserialize)]
-#[snugom(schema = 1, service = "sn", collection = "users")]
+#[snugom(schema = 1, collection = "users")]
 pub(crate) struct UserRecord {
     #[snugom(id)]
     id: String,
@@ -32,7 +32,7 @@ pub(crate) struct UserRecord {
 }
 
 #[derive(SnugomEntity, serde::Serialize, serde::Deserialize)]
-#[snugom(schema = 1, service = "sn", collection = "posts")]
+#[snugom(schema = 1, collection = "posts")]
 pub(crate) struct PostRecord {
     #[snugom(id)]
     id: String,
@@ -54,7 +54,7 @@ pub(crate) struct PostRecord {
 }
 
 #[derive(SnugomEntity, serde::Serialize, serde::Deserialize)]
-#[snugom(schema = 1, service = "sn", collection = "comments")]
+#[snugom(schema = 1, collection = "comments")]
 pub(crate) struct CommentRecord {
     #[snugom(id)]
     id: String,
@@ -93,9 +93,17 @@ impl TestNamespace {
     pub(crate) fn comment_repo(&self) -> Repo<CommentRecord> {
         Repo::new(self.prefix.clone())
     }
+
+    /// Register all entity descriptors (UserRecord, PostRecord, CommentRecord)
+    /// in the global registry. Required for cascade-delete to resolve related
+    /// collection descriptors when each test runs in its own process (nextest).
+    pub(crate) fn register_all_descriptors(&self) {
+        let _ = self.user_repo();
+        let _ = self.post_repo();
+        let _ = self.comment_repo();
+    }
 }
 
 pub(crate) async fn redis_conn() -> ConnectionManager {
-    let client = redis::Client::open("redis://127.0.0.1/").expect("redis client");
-    client.get_connection_manager().await.expect("connection manager")
+    super::common::redis_conn().await
 }

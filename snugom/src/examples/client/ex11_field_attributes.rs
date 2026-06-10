@@ -14,11 +14,11 @@ use redis::aio::ConnectionManager;
 use serde::{Deserialize, Serialize};
 
 use super::support;
-use crate::{SnugomClient, SnugomEntity, snugom_create, SearchQuery, search::SortOrder};
+use crate::{SearchQuery, SnugomClient, SnugomEntity, search::SortOrder, snugom_create};
 
 /// Example entity demonstrating all field attribute types.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "documents")]
+#[snugom(schema = 1, collection = "documents")]
 struct Document {
     /// Primary key - auto-generated if not provided
     #[snugom(id)]
@@ -91,33 +91,42 @@ pub async fn run() -> Result<()> {
     let now = Utc::now();
     let next_week = now + chrono::Duration::days(7);
 
-    let doc1_id = snugom_create!(client, Document {
-        title: "Getting Started Guide".to_string(),
-        content: "This guide will help you get started with our platform".to_string(),
-        status: "published".to_string(),
-        category: "tutorial".to_string(),
-        priority: 1,
-        views: 1500,
-        published: true,
-        due_date: Some(next_week),
-        metadata: "internal use".to_string(),
-        created_at: now,
-        updated_at: now,
-    }).await?.id;
+    let doc1_id = snugom_create!(
+        client,
+        Document {
+            title: "Getting Started Guide".to_string(),
+            content: "This guide will help you get started with our platform".to_string(),
+            status: "published".to_string(),
+            category: "tutorial".to_string(),
+            priority: 1,
+            views: 1500,
+            published: true,
+            due_date: Some(next_week),
+            metadata: "internal use".to_string(),
+            created_at: now,
+            updated_at: now,
+        }
+    )
+    .await?
+    .id;
 
-    snugom_create!(client, Document {
-        title: "API Reference".to_string(),
-        content: "Complete API documentation for developers".to_string(),
-        status: "draft".to_string(),
-        category: "reference".to_string(),
-        priority: 2,
-        views: 500,
-        published: false,
-        due_date: None,
-        metadata: "needs review".to_string(),
-        created_at: now,
-        updated_at: now,
-    }).await?;
+    snugom_create!(
+        client,
+        Document {
+            title: "API Reference".to_string(),
+            content: "Complete API documentation for developers".to_string(),
+            status: "draft".to_string(),
+            category: "reference".to_string(),
+            priority: 2,
+            views: 500,
+            published: false,
+            due_date: None,
+            metadata: "needs review".to_string(),
+            created_at: now,
+            updated_at: now,
+        }
+    )
+    .await?;
 
     // ============ TAG Field Query (Exact Match) ============
     let query = SearchQuery {

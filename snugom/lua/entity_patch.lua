@@ -56,8 +56,8 @@ local function ensure_idempotency(key, idempotency_key, response)
 
     local parts = split_key(key)
     local global_store_key = nil
-    if #parts >= 3 then
-        global_store_key = table.concat({ parts[1], parts[2], parts[3], 'idempotency', idempotency_key }, ':')
+    if #parts >= 2 then
+        global_store_key = table.concat({ parts[1], 'idempotency', idempotency_key }, ':')
     end
     local entity_store_key = key .. ':idempotency:' .. idempotency_key
 
@@ -202,8 +202,7 @@ local function main()
     -- Handle unique constraint enforcement for patch operations
     local key_parts = split_key(key)
     local prefix = key_parts[1]
-    local service = key_parts[2]
-    local collection = key_parts[3]
+    local collection = key_parts[2]
     local unique_updates = {}
 
     if #unique_constraints > 0 then
@@ -279,10 +278,10 @@ local function main()
                     -- Build unique index key
                     local unique_key
                     if #fields == 1 then
-                        unique_key = table.concat({ prefix, service, collection, 'unique', fields[1] }, ':')
+                        unique_key = table.concat({ prefix, collection, 'unique', fields[1] }, ':')
                     else
                         local field_suffix = table.concat(fields, '_')
-                        unique_key = table.concat({ prefix, service, collection, 'unique_compound', field_suffix }, ':')
+                        unique_key = table.concat({ prefix, collection, 'unique_compound', field_suffix }, ':')
                     end
 
                     -- Check if new value conflicts with OTHER entity
@@ -328,19 +327,17 @@ local function main()
 
         local relation_parts
         local rel_prefix
-        local rel_service
         local alias
         local left_id
         local reverse_alias
 
         if maintain_reverse then
-            -- Relation key structure: {prefix}:{service}:rel:{alias}:{left_id}
+            -- Relation key structure: {prefix}:rel:{alias}:{left_id}
             relation_parts = split_key(relation_key)
             rel_prefix = relation_parts[1]
-            rel_service = relation_parts[2]
-            -- relation_parts[3] is "rel"
-            alias = relation_parts[4]
-            left_id = relation_parts[5]
+            -- relation_parts[2] is "rel"
+            alias = relation_parts[3]
+            left_id = relation_parts[4]
             reverse_alias = alias .. '_reverse'
         end
 
@@ -349,7 +346,7 @@ local function main()
             if maintain_reverse then
                 for j = 1, #add do
                     local member_id = add[j]
-                    local reverse_key = table.concat({ rel_prefix, rel_service, 'rel', reverse_alias, member_id }, ':')
+                    local reverse_key = table.concat({ rel_prefix, 'rel', reverse_alias, member_id }, ':')
                     redis.call('SADD', reverse_key, left_id)
                 end
             end
@@ -360,7 +357,7 @@ local function main()
             if maintain_reverse then
                 for j = 1, #remove do
                     local member_id = remove[j]
-                    local reverse_key = table.concat({ rel_prefix, rel_service, 'rel', reverse_alias, member_id }, ':')
+                    local reverse_key = table.concat({ rel_prefix, 'rel', reverse_alias, member_id }, ':')
                     redis.call('SREM', reverse_key, left_id)
                     if redis.call('SCARD', reverse_key) == 0 then
                         redis.call('DEL', reverse_key)

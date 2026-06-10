@@ -6,6 +6,8 @@
 //! - Bulk operations (create_many, delete_many, update_many)
 //! - Entity auto-registration
 
+mod common;
+
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use snugom::{Client, CollectionHandle, SnugomClient, SnugomEntity};
@@ -13,7 +15,7 @@ use snugom::{Client, CollectionHandle, SnugomClient, SnugomEntity};
 // ============ Test Entities ============
 
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[snugom(schema = 1, service = "test_client", collection = "widgets")]
+#[snugom(schema = 1, collection = "widgets")]
 struct Widget {
     #[snugom(id)]
     id: String,
@@ -28,7 +30,7 @@ struct Widget {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[snugom(schema = 1, service = "test_client", collection = "gadgets")]
+#[snugom(schema = 1, collection = "gadgets")]
 struct Gadget {
     #[snugom(id)]
     id: String,
@@ -52,15 +54,17 @@ struct TestClient {
 // ============ Helper Functions ============
 
 async fn create_test_client() -> Client {
-    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let redis_url = common::test_redis_url();
     let prefix = format!("test_client_{}", uuid::Uuid::new_v4());
     Client::connect(&redis_url, prefix).await.expect("Failed to connect to Redis")
 }
 
 async fn create_custom_client() -> TestClient {
-    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let redis_url = common::test_redis_url();
     let prefix = format!("test_client_{}", uuid::Uuid::new_v4());
-    TestClient::connect(&redis_url, prefix).await.expect("Failed to connect to Redis")
+    TestClient::connect(&redis_url, prefix)
+        .await
+        .expect("Failed to connect to Redis")
 }
 
 async fn cleanup_client(client: &Client) {
@@ -287,7 +291,6 @@ fn test_entity_registration() {
     let widget_reg = get_entity_by_name("Widget");
     assert!(widget_reg.is_some());
     assert_eq!(widget_reg.unwrap().collection_name, "widgets");
-    assert_eq!(widget_reg.unwrap().service_name, "test_client");
 
     // Can look up by collection
     let gadget_reg = get_entity_by_collection("gadgets");
@@ -302,10 +305,7 @@ fn test_snugom_model_trait() {
     use snugom::SnugomModel;
 
     // Check constants
-    assert_eq!(Widget::SERVICE, "test_client");
     assert_eq!(Widget::COLLECTION, "widgets");
-
-    assert_eq!(Gadget::SERVICE, "test_client");
     assert_eq!(Gadget::COLLECTION, "gadgets");
 }
 
@@ -683,11 +683,7 @@ async fn test_client_update_many_query() {
         ..Default::default()
     };
     let updated = widgets
-        .update_many(query, |id| {
-            Widget::patch_builder()
-                .entity_id(id)
-                .price(999)
-        })
+        .update_many(query, |id| Widget::patch_builder().entity_id(id).price(999))
         .await
         .expect("update_many failed");
     assert_eq!(updated, 2);
@@ -730,9 +726,7 @@ async fn test_client_upsert() {
         .price(100)
         .created_at(Utc::now());
 
-    let update_builder = Widget::patch_builder()
-        .entity_id(&unique_id)
-        .price(200);
+    let update_builder = Widget::patch_builder().entity_id(&unique_id).price(200);
 
     let result = widgets.upsert(create_builder, update_builder).await.expect("upsert failed");
     assert!(matches!(result, snugom::UpsertResult::Created(_)));
@@ -750,9 +744,7 @@ async fn test_client_upsert() {
         .price(100)
         .created_at(Utc::now());
 
-    let update_builder = Widget::patch_builder()
-        .entity_id(&unique_id)
-        .price(200);
+    let update_builder = Widget::patch_builder().entity_id(&unique_id).price(200);
 
     let result = widgets.upsert(create_builder, update_builder).await.expect("upsert failed");
     assert!(matches!(result, snugom::UpsertResult::Updated(_)));
@@ -804,12 +796,17 @@ async fn test_snugom_create_macro() {
     let client = create_custom_client().await;
 
     // Use snugom_create! macro to create a widget
-    let result = snugom::snugom_create!(client, Widget {
-        name: "Macro Created".to_string(),
-        category: "macro_test".to_string(),
-        price: 150,
-        created_at: Utc::now(),
-    }).await.expect("snugom_create failed");
+    let result = snugom::snugom_create!(
+        client,
+        Widget {
+            name: "Macro Created".to_string(),
+            category: "macro_test".to_string(),
+            price: 150,
+            created_at: Utc::now(),
+        }
+    )
+    .await
+    .expect("snugom_create failed");
 
     // Verify the widget was created
     let mut widgets = client.widgets();
@@ -843,7 +840,9 @@ async fn test_snugom_update_macro() {
     snugom::snugom_update!(client, Widget(entity_id = &widget_id) {
         name: "After Update".to_string(),
         price: 200,
-    }).await.expect("snugom_update failed");
+    })
+    .await
+    .expect("snugom_update failed");
 
     // Verify the update - widget_id is still available after the macro
     let updated = widgets.get_or_error(&widget_id).await.expect("get failed");
@@ -875,7 +874,9 @@ async fn test_snugom_delete_macro() {
     assert!(widgets.exists(&widget_id).await.expect("exists failed"));
 
     // Use snugom_delete! macro to delete the widget
-    snugom::snugom_delete!(client, Widget(&widget_id)).await.expect("snugom_delete failed");
+    snugom::snugom_delete!(client, Widget(&widget_id))
+        .await
+        .expect("snugom_delete failed");
 
     // Verify it's deleted
     assert!(!widgets.exists(&widget_id).await.expect("exists failed"));
@@ -905,7 +906,9 @@ async fn test_snugom_upsert_macro() {
         update: Widget(entity_id = &unique_id) {
             price: 200,
         },
-    }).await.expect("snugom_upsert failed");
+    })
+    .await
+    .expect("snugom_upsert failed");
 
     // Verify it was created - unique_id is still available after the macro
     let widget = widgets.get_or_error(&unique_id).await.expect("get failed");
@@ -924,7 +927,9 @@ async fn test_snugom_upsert_macro() {
         update: Widget(entity_id = &unique_id) {
             price: 500,
         },
-    }).await.expect("snugom_upsert failed");
+    })
+    .await
+    .expect("snugom_upsert failed");
 
     // Verify it was updated - unique_id is still available
     let widget = widgets.get_or_error(&unique_id).await.expect("get failed");
@@ -940,9 +945,11 @@ async fn test_snugom_upsert_macro() {
 
 #[tokio::test]
 async fn test_client_new_constructor() {
-    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let redis_url = common::test_redis_url();
     let redis_client = redis::Client::open(redis_url).expect("Failed to open redis client");
-    let conn = snugom::ConnectionManager::new(redis_client).await.expect("Failed to create connection");
+    let conn = snugom::ConnectionManager::new(redis_client)
+        .await
+        .expect("Failed to create connection");
 
     let prefix = format!("test_new_{}", uuid::Uuid::new_v4());
     let client = TestClient::new(conn, prefix.clone());
@@ -1018,7 +1025,10 @@ async fn test_client_delete_with_version() {
     let version = created.responses[0]["version"].as_u64().expect("version should exist");
 
     // Delete with correct version should succeed
-    widgets.delete_with_version(&widget_id, version).await.expect("delete_with_version failed");
+    widgets
+        .delete_with_version(&widget_id, version)
+        .await
+        .expect("delete_with_version failed");
 
     // Verify deletion
     assert!(!widgets.exists(&widget_id).await.expect("exists failed"));
@@ -1083,11 +1093,12 @@ async fn test_client_update_many_by_ids() {
 
     // Update first two widgets by their IDs
     let ids_to_update: Vec<&str> = bulk_result.ids[0..2].iter().map(|s| s.as_str()).collect();
-    let updated_count = widgets.update_many_by_ids(&ids_to_update, |id| {
-        Widget::patch_builder()
-            .entity_id(id)
-            .category("updated_category".to_string())
-    }).await.expect("update_many_by_ids failed");
+    let updated_count = widgets
+        .update_many_by_ids(&ids_to_update, |id| {
+            Widget::patch_builder().entity_id(id).category("updated_category".to_string())
+        })
+        .await
+        .expect("update_many_by_ids failed");
 
     assert_eq!(updated_count, 2);
 

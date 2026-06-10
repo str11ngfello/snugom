@@ -4,10 +4,13 @@ use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 
 use super::support;
-use crate::{SnugomEntity, repository::{Repo, RelationPlan}};
+use crate::{
+    SnugomEntity,
+    repository::{RelationPlan, Repo},
+};
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "examples", collection = "relation_boards")]
+#[snugom(schema = 1, collection = "relation_boards")]
 struct RelationBoard {
     #[snugom(id)]
     board_id: String,
@@ -20,7 +23,7 @@ struct RelationBoard {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "examples", collection = "relation_members")]
+#[snugom(schema = 1, collection = "relation_members")]
 struct RelationMember {
     #[snugom(id)]
     member_id: String,
@@ -85,7 +88,7 @@ pub async fn run() -> Result<()> {
                 "board_members",
                 board_id.clone(),
                 vec![member_one_id.clone()], // connect
-                Vec::new(),                   // disconnect
+                Vec::new(),                  // disconnect
             )],
         )
         .await?;
@@ -100,8 +103,8 @@ pub async fn run() -> Result<()> {
             vec![RelationPlan::with_left(
                 "board_members",
                 board_id.clone(),
-                vec![member_two_id.clone()],  // connect
-                vec![member_one_id.clone()],  // disconnect
+                vec![member_two_id.clone()], // connect
+                vec![member_one_id.clone()], // disconnect
             )],
         )
         .await?;
@@ -116,8 +119,8 @@ pub async fn run() -> Result<()> {
             vec![RelationPlan::with_left(
                 "board_members",
                 board_id.clone(),
-                Vec::new(),                   // connect
-                vec![member_two_id.clone()],  // disconnect
+                Vec::new(),                  // connect
+                vec![member_two_id.clone()], // disconnect
             )],
         )
         .await?;

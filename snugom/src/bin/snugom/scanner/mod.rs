@@ -15,6 +15,6 @@ pub use parser::parse_entity_file;
 // Re-export schema types for use by other modules
 #[allow(unused_imports)]
 pub use schema::{
-    CascadeStrategy, EntitySchema, FieldInfo, FilterableType, IndexInfo, IndexType,
-    RelationInfo, RelationKind, UniqueConstraint,
+    CascadeStrategy, EntitySchema, FieldInfo, FilterableType, IndexInfo, IndexType, RelationInfo, RelationKind,
+    UniqueConstraint,
 };

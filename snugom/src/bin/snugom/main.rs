@@ -11,30 +11,28 @@ mod utils;
 
 use anyhow::Result;
 use clap::{
+    ColorChoice, Command, CommandFactory, FromArgMatches, Parser, Subcommand,
     builder::{
-        styling::{AnsiColor, Color as ClapColor, RgbColor, Style},
         Styles,
+        styling::{AnsiColor, Color as ClapColor, RgbColor, Style},
     },
     error::ErrorKind,
-    ColorChoice, Command, CommandFactory, FromArgMatches, Parser, Subcommand,
 };
 
-use colored::{control::ShouldColorize, Color as ThemeColor, Colorize};
+use colored::{Color as ThemeColor, Colorize, control::ShouldColorize};
 use std::fmt::Write;
 use std::io::{self, Write as IoWrite};
 
 use commands::{
-    init::{handle_init, InitArgs},
-    migrate::{handle_migrate_commands, MigrateCommands},
-    schema::{handle_schema_commands, SchemaCommands},
+    init::{InitArgs, handle_init},
+    migrate::{MigrateCommands, handle_migrate_commands},
+    schema::{SchemaCommands, handle_schema_commands},
 };
-use examples::{command_examples, ExampleGroup};
+use examples::{ExampleGroup, command_examples};
 use output::{GlobalOptions, OutputFormat, OutputManager};
 use theme::{ICONS, THEME};
 
-const ENVIRONMENT_VARIABLES: &[(&str, &str)] = &[
-    ("REDIS_URL", "Redis connection URL for migrations"),
-];
+const ENVIRONMENT_VARIABLES: &[(&str, &str)] = &[("REDIS_URL", "Redis connection URL for migrations")];
 
 #[derive(Parser)]
 #[command(name = "snugom")]
@@ -114,10 +112,7 @@ impl Cli {
 
 fn handle_missing_subcommand(error: clap::error::Error) -> ! {
     let mut command = build_cli_command();
-    let command_name = command
-        .get_display_name()
-        .unwrap_or_else(|| command.get_name())
-        .to_string();
+    let command_name = command.get_display_name().unwrap_or_else(|| command.get_name()).to_string();
 
     let _ = print_blank_line_stderr();
     eprintln!("error: '{command_name}' requires a subcommand but one was not provided");
@@ -148,7 +143,10 @@ fn build_cli_command() -> Command {
     command
 }
 
-fn attach_command_examples(command: &mut Command, use_color: bool) {
+fn attach_command_examples(
+    command: &mut Command,
+    use_color: bool,
+) {
     for example in command_examples() {
         if let Some(subcommand) = command.find_subcommand_mut(example.name) {
             let help_text = render_examples(example.groups, use_color);
@@ -159,7 +157,10 @@ fn attach_command_examples(command: &mut Command, use_color: bool) {
     }
 }
 
-fn render_examples(groups: &[ExampleGroup], use_color: bool) -> String {
+fn render_examples(
+    groups: &[ExampleGroup],
+    use_color: bool,
+) -> String {
     let theme = &THEME;
     let mut buffer = String::new();
 
@@ -230,7 +231,12 @@ fn print_blank_line_stderr() -> io::Result<()> {
     IoWrite::flush(&mut stderr)
 }
 
-fn stylize(text: &str, color: ThemeColor, bold: bool, use_color: bool) -> String {
+fn stylize(
+    text: &str,
+    color: ThemeColor,
+    bold: bool,
+    use_color: bool,
+) -> String {
     if use_color {
         let styled = text.color(color);
         if bold {
@@ -281,7 +287,11 @@ fn color_to_clap_color(color: ThemeColor) -> ClapColor {
         ThemeColor::BrightMagenta => ClapColor::Ansi(AnsiColor::BrightMagenta),
         ThemeColor::BrightCyan => ClapColor::Ansi(AnsiColor::BrightCyan),
         ThemeColor::BrightWhite => ClapColor::Ansi(AnsiColor::BrightWhite),
-        ThemeColor::TrueColor { r, g, b } => ClapColor::Rgb(RgbColor(r, g, b)),
+        ThemeColor::TrueColor {
+            r,
+            g,
+            b,
+        } => ClapColor::Rgb(RgbColor(r, g, b)),
     }
 }
 

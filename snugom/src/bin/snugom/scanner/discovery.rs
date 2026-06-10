@@ -29,11 +29,7 @@ pub fn discover_entities(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
             continue;
         }
 
-        for entry in WalkDir::new(&search_path)
-            .follow_links(true)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
+        for entry in WalkDir::new(&search_path).follow_links(true).into_iter().filter_map(|e| e.ok()) {
             let path = entry.path();
 
             // Skip non-Rust files
@@ -42,20 +38,13 @@ pub fn discover_entities(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
             }
 
             // Skip hidden files and directories
-            if path
-                .components()
-                .any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
-            {
+            if path.components().any(|c| c.as_os_str().to_string_lossy().starts_with('.')) {
                 continue;
             }
 
             // Check if file contains SnugomEntity
             if file_contains_snugom_entity(path)? {
-                let relative_path = path
-                    .strip_prefix(project_root)
-                    .unwrap_or(path)
-                    .to_string_lossy()
-                    .to_string();
+                let relative_path = path.strip_prefix(project_root).unwrap_or(path).to_string_lossy().to_string();
 
                 discovered.push(DiscoveredFile {
                     path: path.to_path_buf(),
@@ -75,8 +64,7 @@ pub fn discover_entities(project_root: &Path) -> Result<Vec<DiscoveredFile>> {
 ///
 /// This is a fast text-based check before doing full parsing.
 fn file_contains_snugom_entity(path: &Path) -> Result<bool> {
-    let content = std::fs::read_to_string(path)
-        .with_context(|| format!("Failed to read file: {}", path.display()))?;
+    let content = std::fs::read_to_string(path).with_context(|| format!("Failed to read file: {}", path.display()))?;
 
     // Look for derive(SnugomEntity) or derive(..., SnugomEntity, ...)
     Ok(content.contains("SnugomEntity"))

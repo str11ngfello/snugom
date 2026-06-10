@@ -11,10 +11,10 @@ use redis::aio::ConnectionManager;
 use serde::{Deserialize, Serialize};
 
 use super::support;
-use crate::{SnugomClient, SnugomEntity, snugom_create, snugom_delete, SearchQuery};
+use crate::{SearchQuery, SnugomClient, SnugomEntity, snugom_create, snugom_delete};
 
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "logs")]
+#[snugom(schema = 1, collection = "logs")]
 struct LogEntry {
     #[snugom(id)]
     id: String,
@@ -41,35 +41,55 @@ pub async fn run() -> Result<()> {
     let mut logs = client.log_entries();
 
     // Create test log entries using snugom_create! macro
-    let info1 = snugom_create!(client, LogEntry {
-        level: "info".to_string(),
-        message: "System started".to_string(),
-        created_at: Utc::now(),
-    }).await?;
+    let info1 = snugom_create!(
+        client,
+        LogEntry {
+            level: "info".to_string(),
+            message: "System started".to_string(),
+            created_at: Utc::now(),
+        }
+    )
+    .await?;
 
-    let info2 = snugom_create!(client, LogEntry {
-        level: "info".to_string(),
-        message: "User logged in".to_string(),
-        created_at: Utc::now(),
-    }).await?;
+    let info2 = snugom_create!(
+        client,
+        LogEntry {
+            level: "info".to_string(),
+            message: "User logged in".to_string(),
+            created_at: Utc::now(),
+        }
+    )
+    .await?;
 
-    let warn1 = snugom_create!(client, LogEntry {
-        level: "warn".to_string(),
-        message: "High memory usage".to_string(),
-        created_at: Utc::now(),
-    }).await?;
+    let warn1 = snugom_create!(
+        client,
+        LogEntry {
+            level: "warn".to_string(),
+            message: "High memory usage".to_string(),
+            created_at: Utc::now(),
+        }
+    )
+    .await?;
 
-    let error1 = snugom_create!(client, LogEntry {
-        level: "error".to_string(),
-        message: "Connection failed".to_string(),
-        created_at: Utc::now(),
-    }).await?;
+    let error1 = snugom_create!(
+        client,
+        LogEntry {
+            level: "error".to_string(),
+            message: "Connection failed".to_string(),
+            created_at: Utc::now(),
+        }
+    )
+    .await?;
 
-    let error2 = snugom_create!(client, LogEntry {
-        level: "error".to_string(),
-        message: "Timeout occurred".to_string(),
-        created_at: Utc::now(),
-    }).await?;
+    let error2 = snugom_create!(
+        client,
+        LogEntry {
+            level: "error".to_string(),
+            message: "Timeout occurred".to_string(),
+            created_at: Utc::now(),
+        }
+    )
+    .await?;
 
     assert_eq!(logs.count().await?, 5, "should have 5 logs");
 
@@ -93,17 +113,25 @@ pub async fn run() -> Result<()> {
     // ============ delete_many() ============
     // Bulk delete by search query
     // First add more entries
-    snugom_create!(client, LogEntry {
-        level: "debug".to_string(),
-        message: "Debug 1".to_string(),
-        created_at: Utc::now(),
-    }).await?;
+    snugom_create!(
+        client,
+        LogEntry {
+            level: "debug".to_string(),
+            message: "Debug 1".to_string(),
+            created_at: Utc::now(),
+        }
+    )
+    .await?;
 
-    snugom_create!(client, LogEntry {
-        level: "debug".to_string(),
-        message: "Debug 2".to_string(),
-        created_at: Utc::now(),
-    }).await?;
+    snugom_create!(
+        client,
+        LogEntry {
+            level: "debug".to_string(),
+            message: "Debug 2".to_string(),
+            created_at: Utc::now(),
+        }
+    )
+    .await?;
 
     // Delete all debug logs (collection-level API)
     let query = SearchQuery {

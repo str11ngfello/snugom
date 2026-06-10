@@ -3,12 +3,12 @@ use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
 
 use super::support;
+use crate::SnugomEntity;
 use crate::repository::Repo;
 use crate::search::{SearchQuery, SortOrder};
-use crate::SnugomEntity;
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "examples", collection = "searchable_guilds")]
+#[snugom(schema = 1, collection = "searchable_guilds")]
 struct SearchableGuild {
     #[snugom(id)]
     id: String,

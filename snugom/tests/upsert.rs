@@ -3,15 +3,13 @@
 //! These tests verify the Lua-based atomic upsert that prevents race conditions
 //! when creating or updating entities.
 
+mod common;
+
 use chrono::{DateTime, Utc};
-use redis::{aio::ConnectionManager, AsyncCommands};
+use redis::{AsyncCommands, aio::ConnectionManager};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use snugom::{
-    SnugomEntity, UpsertResult,
-    id::generate_entity_id,
-    repository::Repo,
-};
+use snugom::{SnugomEntity, UpsertResult, id::generate_entity_id, repository::Repo};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 // ============================================================================
@@ -20,7 +18,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Entity with a unique name field for testing unique constraints.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "upsert_test", collection = "unique_names")]
+#[snugom(schema = 1, collection = "unique_names")]
 struct UniqueNameEntity {
     #[snugom(id)]
     id: String,
@@ -32,7 +30,7 @@ struct UniqueNameEntity {
 
 /// Entity with case-insensitive unique constraint.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "upsert_test", collection = "ci_slugs")]
+#[snugom(schema = 1, collection = "ci_slugs")]
 struct CaseInsensitiveEntity {
     #[snugom(id)]
     id: String,
@@ -42,7 +40,7 @@ struct CaseInsensitiveEntity {
 
 /// Entity with relations for testing upsert with relation mutations.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "upsert_test", collection = "parents")]
+#[snugom(schema = 1, collection = "parents")]
 struct UpsertParentEntity {
     #[snugom(id)]
     id: String,
@@ -57,7 +55,7 @@ struct UpsertParentEntity {
 
 /// Child entity for relation tests.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "upsert_test", collection = "children")]
+#[snugom(schema = 1, collection = "children")]
 struct UpsertChildEntity {
     #[snugom(id)]
     id: String,
@@ -98,8 +96,7 @@ impl TestNamespace {
 }
 
 async fn redis_conn() -> ConnectionManager {
-    let client = redis::Client::open("redis://127.0.0.1/").expect("redis client");
-    client.get_connection_manager().await.expect("connection manager")
+    common::redis_conn().await
 }
 
 // ============================================================================
@@ -123,14 +120,16 @@ async fn upsert_creates_when_not_exists() {
         }
     };
 
-    let result = repo.upsert(&mut conn, create_builder, update_builder)
+    let result = repo
+        .upsert(&mut conn, create_builder, update_builder)
         .await
         .expect("upsert should succeed");
 
     match result {
         UpsertResult::Created(create_result) => {
             // Verify the entity was created
-            let fetched = repo.get(&mut conn, &create_result.id)
+            let fetched = repo
+                .get(&mut conn, &create_result.id)
                 .await
                 .expect("fetch")
                 .expect("entity should exist");
@@ -155,7 +154,8 @@ async fn upsert_updates_when_exists() {
         .name("existing-entity".to_string())
         .status("original".to_string());
 
-    let created = repo.create_with_conn(&mut conn, create_builder)
+    let created = repo
+        .create_with_conn(&mut conn, create_builder)
         .await
         .expect("create seed entity");
 
@@ -170,14 +170,16 @@ async fn upsert_updates_when_exists() {
         }
     };
 
-    let result = repo.upsert(&mut conn, upsert_create_builder, update_builder)
+    let result = repo
+        .upsert(&mut conn, upsert_create_builder, update_builder)
         .await
         .expect("upsert should succeed");
 
     match result {
         UpsertResult::Updated(_) => {
             // Verify the entity was updated
-            let fetched = repo.get(&mut conn, &created.id)
+            let fetched = repo
+                .get(&mut conn, &created.id)
                 .await
                 .expect("fetch")
                 .expect("entity should exist");
@@ -252,7 +254,8 @@ async fn upsert_update_enforces_unique_constraint() {
         .name("name-two".to_string())
         .status("active".to_string());
 
-    let second = repo.create_with_conn(&mut conn, second_builder)
+    let second = repo
+        .create_with_conn(&mut conn, second_builder)
         .await
         .expect("create second entity");
 
@@ -286,16 +289,14 @@ async fn upsert_create_enforces_case_insensitive_unique() {
     let repo = ns.ci_entity_repo();
 
     // Create first entity with slug
-    let first_builder = CaseInsensitiveEntity::validation_builder()
-        .slug("my-slug".to_string());
+    let first_builder = CaseInsensitiveEntity::validation_builder().slug("my-slug".to_string());
 
     repo.create_with_conn(&mut conn, first_builder)
         .await
         .expect("create first entity");
 
     // Try upsert with same slug in different case - should fail
-    let create_builder = CaseInsensitiveEntity::validation_builder()
-        .slug("MY-SLUG".to_string()); // same as "my-slug" case-insensitive
+    let create_builder = CaseInsensitiveEntity::validation_builder().slug("MY-SLUG".to_string()); // same as "my-slug" case-insensitive
 
     let update_builder = snugom::snug! {
         CaseInsensitiveEntity(entity_id = "nonexistent".to_string()) {
@@ -381,9 +382,7 @@ async fn upsert_idempotency_on_update_path() {
         .name(format!("seed-{}", generate_entity_id()))
         .status("initial".to_string());
 
-    let seed = repo.create_with_conn(&mut conn, seed_builder)
-        .await
-        .expect("create seed");
+    let seed = repo.create_with_conn(&mut conn, seed_builder).await.expect("create seed");
 
     let idempotency_key = format!("idem-update-{}", generate_entity_id());
 
@@ -424,7 +423,8 @@ async fn upsert_idempotency_on_update_path() {
         .expect("second upsert");
 
     // Verify the status wasn't changed by second call
-    let fetched = repo.get(&mut conn, &seed.id)
+    let fetched = repo
+        .get(&mut conn, &seed.id)
         .await
         .expect("fetch")
         .expect("entity should exist");
@@ -487,10 +487,7 @@ async fn upsert_update_with_relations() {
         .children_ids(Vec::new())
         .connect("children_ids", vec!["existing-child".to_string()]);
 
-    let seed = repo
-        .create_with_conn(&mut conn, seed_builder)
-        .await
-        .expect("create seed");
+    let seed = repo.create_with_conn(&mut conn, seed_builder).await.expect("create seed");
 
     // Upsert to add more children and remove existing
     let create_builder = UpsertParentEntity::validation_builder()
@@ -514,7 +511,10 @@ async fn upsert_update_with_relations() {
     // Verify relations
     let rel_key = repo.relation_key("children_ids", &seed.id);
     let members: Vec<String> = conn.smembers(&rel_key).await.expect("get members");
-    assert!(!members.contains(&"existing-child".to_string()), "existing-child should be removed");
+    assert!(
+        !members.contains(&"existing-child".to_string()),
+        "existing-child should be removed"
+    );
     assert!(members.contains(&"new-child-1".to_string()));
     assert!(members.contains(&"new-child-2".to_string()));
 }
@@ -569,15 +569,9 @@ async fn upsert_prevents_race_condition() {
     );
 
     // At least one should succeed
-    let successful_results: Vec<_> = [result1, result2]
-        .into_iter()
-        .filter(|r| r.is_ok())
-        .collect();
+    let successful_results: Vec<_> = [result1, result2].into_iter().filter(|r| r.is_ok()).collect();
 
-    assert!(
-        !successful_results.is_empty(),
-        "at least one upsert should succeed"
-    );
+    assert!(!successful_results.is_empty(), "at least one upsert should succeed");
 
     // Count how many entities were created vs updated
     let mut created_count = 0;
@@ -613,9 +607,7 @@ async fn upsert_increments_version_on_update() {
         .name(format!("version-test-{}", generate_entity_id()))
         .status("v1".to_string());
 
-    let seed = repo.create_with_conn(&mut conn, seed_builder)
-        .await
-        .expect("create seed");
+    let seed = repo.create_with_conn(&mut conn, seed_builder).await.expect("create seed");
 
     // Verify initial version
     let key = repo.entity_key(&seed.id);
@@ -639,7 +631,8 @@ async fn upsert_increments_version_on_update() {
         }
     };
 
-    let _result = repo.upsert(&mut conn, create_builder, update_builder)
+    let _result = repo
+        .upsert(&mut conn, create_builder, update_builder)
         .await
         .expect("upsert update");
 
@@ -671,7 +664,8 @@ async fn upsert_sets_version_on_create() {
         }
     };
 
-    let result = repo.upsert(&mut conn, create_builder, update_builder)
+    let result = repo
+        .upsert(&mut conn, create_builder, update_builder)
         .await
         .expect("upsert create");
 

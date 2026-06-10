@@ -113,7 +113,10 @@ impl FieldChange {
     }
 
     /// Create a "modified field" change
-    pub fn modified(old: FieldInfo, new: FieldInfo) -> Self {
+    pub fn modified(
+        old: FieldInfo,
+        new: FieldInfo,
+    ) -> Self {
         Self {
             name: new.name.clone(),
             change_type: ChangeType::Modified,
@@ -183,7 +186,10 @@ pub struct IndexChange {
 }
 
 impl IndexChange {
-    pub fn added(field: String, index_type: FilterableType) -> Self {
+    pub fn added(
+        field: String,
+        index_type: FilterableType,
+    ) -> Self {
         Self {
             field,
             change_type: ChangeType::Added,
@@ -192,7 +198,10 @@ impl IndexChange {
         }
     }
 
-    pub fn removed(field: String, index_type: FilterableType) -> Self {
+    pub fn removed(
+        field: String,
+        index_type: FilterableType,
+    ) -> Self {
         Self {
             field,
             change_type: ChangeType::Removed,
@@ -201,7 +210,11 @@ impl IndexChange {
         }
     }
 
-    pub fn modified(field: String, old_type: FilterableType, new_type: FilterableType) -> Self {
+    pub fn modified(
+        field: String,
+        old_type: FilterableType,
+        new_type: FilterableType,
+    ) -> Self {
         Self {
             field,
             change_type: ChangeType::Modified,
@@ -244,7 +257,10 @@ impl RelationChange {
         }
     }
 
-    pub fn modified(old: RelationInfo, new: RelationInfo) -> Self {
+    pub fn modified(
+        old: RelationInfo,
+        new: RelationInfo,
+    ) -> Self {
         Self {
             field: new.field.clone(),
             change_type: ChangeType::Modified,
@@ -297,7 +313,10 @@ pub enum ChangeType {
 }
 
 impl std::fmt::Display for ChangeType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
         match self {
             ChangeType::Added => write!(f, "+"),
             ChangeType::Removed => write!(f, "-"),
@@ -323,7 +342,10 @@ pub enum MigrationComplexity {
 }
 
 impl std::fmt::Display for MigrationComplexity {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
         match self {
             MigrationComplexity::Baseline => write!(f, "BASELINE"),
             MigrationComplexity::Auto => write!(f, "AUTO"),
@@ -335,7 +357,10 @@ impl std::fmt::Display for MigrationComplexity {
 }
 
 /// Compare two entity schemas and produce a diff
-pub fn diff_schemas(old: Option<&EntitySchema>, new: &EntitySchema) -> EntityDiff {
+pub fn diff_schemas(
+    old: Option<&EntitySchema>,
+    new: &EntitySchema,
+) -> EntityDiff {
     let mut changes = Vec::new();
 
     // If no old schema, this is a new entity
@@ -500,7 +525,10 @@ pub fn diff_schemas(old: Option<&EntitySchema>, new: &EntitySchema) -> EntityDif
 }
 
 /// Check if two fields differ in a meaningful way
-fn fields_differ(old: &FieldInfo, new: &FieldInfo) -> bool {
+fn fields_differ(
+    old: &FieldInfo,
+    new: &FieldInfo,
+) -> bool {
     old.field_type != new.field_type
         || old.id != new.id
         || old.filterable != new.filterable
@@ -511,7 +539,10 @@ fn fields_differ(old: &FieldInfo, new: &FieldInfo) -> bool {
 }
 
 /// Check if two relations differ
-fn relations_differ(old: &RelationInfo, new: &RelationInfo) -> bool {
+fn relations_differ(
+    old: &RelationInfo,
+    new: &RelationInfo,
+) -> bool {
     old.target != new.target || old.kind != new.kind || old.cascade != new.cascade
 }
 
@@ -612,7 +643,11 @@ mod tests {
     use crate::scanner::{CascadeStrategy, FilterableType, RelationKind, UniqueConstraint};
     use chrono::Utc;
 
-    fn make_schema(name: &str, version: u32, fields: Vec<FieldInfo>) -> EntitySchema {
+    fn make_schema(
+        name: &str,
+        version: u32,
+        fields: Vec<FieldInfo>,
+    ) -> EntitySchema {
         EntitySchema {
             entity: name.to_string(),
             collection: Some(name.to_lowercase()),
@@ -803,7 +838,11 @@ mod tests {
         assert_eq!(diff.complexity, MigrationComplexity::Auto);
     }
 
-    fn make_field_with_filterable(name: &str, field_type: &str, filterable: Option<FilterableType>) -> FieldInfo {
+    fn make_field_with_filterable(
+        name: &str,
+        field_type: &str,
+        filterable: Option<FilterableType>,
+    ) -> FieldInfo {
         let mut field = FieldInfo::new(name.to_string(), field_type.to_string());
         field.filterable = filterable;
         field

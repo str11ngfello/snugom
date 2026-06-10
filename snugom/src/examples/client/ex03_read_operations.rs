@@ -6,8 +6,7 @@
 //! - `exists()` - Check if entity exists
 //! - `count()` - Count all entities in collection
 //!
-//! Note: Read operations use the collection-level API since there's no
-//! macro DSL for reads (reads don't need the complex nesting support).
+//! For reading with relation includes, see ex19 (`snugom_find!`) and ex21 (`snugom_find_many!`).
 
 use anyhow::Result;
 use chrono::Utc;
@@ -15,10 +14,10 @@ use redis::aio::ConnectionManager;
 use serde::{Deserialize, Serialize};
 
 use super::support;
-use crate::{SnugomClient, SnugomEntity, snugom_create, snugom_delete, errors::RepoError};
+use crate::{SnugomClient, SnugomEntity, errors::RepoError, snugom_create, snugom_delete};
 
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "users")]
+#[snugom(schema = 1, collection = "users")]
 struct User {
     #[snugom(id)]
     id: String,
@@ -44,17 +43,25 @@ pub async fn run() -> Result<()> {
     let mut users = client.users();
 
     // Create some test data using snugom_create! macro
-    let alice = snugom_create!(client, User {
-        name: "Alice".to_string(),
-        email: "alice@example.com".to_string(),
-        created_at: Utc::now(),
-    }).await?;
+    let alice = snugom_create!(
+        client,
+        User {
+            name: "Alice".to_string(),
+            email: "alice@example.com".to_string(),
+            created_at: Utc::now(),
+        }
+    )
+    .await?;
 
-    let bob = snugom_create!(client, User {
-        name: "Bob".to_string(),
-        email: "bob@example.com".to_string(),
-        created_at: Utc::now(),
-    }).await?;
+    let bob = snugom_create!(
+        client,
+        User {
+            name: "Bob".to_string(),
+            email: "bob@example.com".to_string(),
+            created_at: Utc::now(),
+        }
+    )
+    .await?;
 
     // ============ get() ============
     // Returns Option<T> - None if not found
@@ -75,7 +82,9 @@ pub async fn run() -> Result<()> {
     let err = users.get_or_error("nonexistent_id").await;
     assert!(err.is_err(), "should error for missing entity");
     match err {
-        Err(RepoError::NotFound { .. }) => { /* expected */ }
+        Err(RepoError::NotFound {
+            ..
+        }) => { /* expected */ }
         other => panic!("expected NotFound error, got {other:?}"),
     }
 

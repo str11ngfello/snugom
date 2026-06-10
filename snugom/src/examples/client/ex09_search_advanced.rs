@@ -12,10 +12,10 @@ use redis::aio::ConnectionManager;
 use serde::{Deserialize, Serialize};
 
 use super::support;
-use crate::{SnugomClient, SnugomEntity, SearchQuery};
+use crate::{SearchQuery, SnugomClient, SnugomEntity};
 
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "events")]
+#[snugom(schema = 1, collection = "events")]
 struct Event {
     #[snugom(id)]
     id: String,

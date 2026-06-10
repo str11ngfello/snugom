@@ -15,7 +15,7 @@ use super::support;
 use crate::{SnugomClient, SnugomEntity, errors::RepoError};
 
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "error_users")]
+#[snugom(schema = 1, collection = "error_users")]
 struct User {
     #[snugom(id)]
     id: String,
@@ -57,7 +57,9 @@ pub async fn run() -> Result<()> {
         // Using get_or_error() returns an error for missing entities
         let result = users.get_or_error("nonexistent-id").await;
         match result {
-            Err(RepoError::NotFound { .. }) => {
+            Err(RepoError::NotFound {
+                ..
+            }) => {
                 // Expected - entity doesn't exist
             }
             Ok(_) => panic!("should have returned NotFound error"),
@@ -88,7 +90,11 @@ pub async fn run() -> Result<()> {
             .await;
 
         match result {
-            Err(RepoError::UniqueConstraintViolation { fields, values, .. }) => {
+            Err(RepoError::UniqueConstraintViolation {
+                fields,
+                values,
+                ..
+            }) => {
                 assert!(fields.contains(&"email".to_string()));
                 assert!(!values.is_empty());
             }
@@ -130,7 +136,11 @@ pub async fn run() -> Result<()> {
             .await;
 
         match result {
-            Err(RepoError::VersionConflict { expected, actual, .. }) => {
+            Err(RepoError::VersionConflict {
+                expected,
+                actual,
+                ..
+            }) => {
                 assert_eq!(expected, Some(user.version as u64));
                 assert!(actual > expected);
             }
@@ -164,7 +174,9 @@ pub async fn run() -> Result<()> {
         let result = users.delete_with_version(&user.id, user.version as u64).await;
 
         match result {
-            Err(RepoError::VersionConflict { .. }) => {
+            Err(RepoError::VersionConflict {
+                ..
+            }) => {
                 // Expected - version has changed
             }
             Ok(_) => panic!("should have returned VersionConflict"),
@@ -173,9 +185,7 @@ pub async fn run() -> Result<()> {
 
         // Delete with correct version
         let current = users.get_or_error(&user.id).await?;
-        users
-            .delete_with_version(&user.id, current.version as u64)
-            .await?;
+        users.delete_with_version(&user.id, current.version as u64).await?;
 
         // Verify deleted
         assert!(!users.exists(&user.id).await?);
@@ -200,7 +210,9 @@ pub async fn run() -> Result<()> {
                     .await
                 {
                     Ok(created) => created,
-                    Err(RepoError::UniqueConstraintViolation { .. }) => {
+                    Err(RepoError::UniqueConstraintViolation {
+                        ..
+                    }) => {
                         // Another process created it - fetch by email
                         users
                             .find_first(crate::SearchQuery {

@@ -13,10 +13,10 @@ use redis::aio::ConnectionManager;
 use serde::{Deserialize, Serialize};
 
 use super::support;
-use crate::{SnugomClient, SnugomEntity, snugom_create, snugom_update, errors::RepoError};
+use crate::{SnugomClient, SnugomEntity, errors::RepoError, snugom_create, snugom_update};
 
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "accounts")]
+#[snugom(schema = 1, collection = "accounts")]
 struct Account {
     #[snugom(id)]
     id: String,
@@ -53,12 +53,17 @@ pub async fn run() -> Result<()> {
     let mut accounts = client.accounts();
 
     // ============ Create Initial Account ============
-    let alice_id = snugom_create!(client, Account {
-        email: "alice@example.com".to_string(),
-        username: "alice".to_string(),
-        display_name: "Alice Smith".to_string(),
-        created_at: Utc::now(),
-    }).await?.id;
+    let alice_id = snugom_create!(
+        client,
+        Account {
+            email: "alice@example.com".to_string(),
+            username: "alice".to_string(),
+            display_name: "Alice Smith".to_string(),
+            created_at: Utc::now(),
+        }
+    )
+    .await?
+    .id;
 
     let alice = accounts.get_or_error(&alice_id).await?;
     assert_eq!(alice.email, "alice@example.com");
@@ -78,7 +83,10 @@ pub async fn run() -> Result<()> {
 
     assert!(duplicate_email.is_err(), "duplicate email should fail");
     match duplicate_email {
-        Err(RepoError::UniqueConstraintViolation { fields, .. }) => {
+        Err(RepoError::UniqueConstraintViolation {
+            fields,
+            ..
+        }) => {
             assert!(fields.contains(&"email".to_string()));
         }
         other => panic!("expected UniqueConstraintViolation, got {other:?}"),
@@ -86,12 +94,17 @@ pub async fn run() -> Result<()> {
 
     // ============ Case-Sensitive Username Uniqueness ============
     // Same username with different case should succeed
-    let alice2_id = snugom_create!(client, Account {
-        email: "alice2@example.com".to_string(),
-        username: "Alice".to_string(), // Capital A - different from "alice"
-        display_name: "Alice Two".to_string(),
-        created_at: Utc::now(),
-    }).await?.id;
+    let alice2_id = snugom_create!(
+        client,
+        Account {
+            email: "alice2@example.com".to_string(),
+            username: "Alice".to_string(), // Capital A - different from "alice"
+            display_name: "Alice Two".to_string(),
+            created_at: Utc::now(),
+        }
+    )
+    .await?
+    .id;
 
     assert!(!alice2_id.is_empty(), "different case username should be allowed");
 
@@ -109,7 +122,10 @@ pub async fn run() -> Result<()> {
 
     assert!(exact_duplicate.is_err(), "exact duplicate username should fail");
     match exact_duplicate {
-        Err(RepoError::UniqueConstraintViolation { fields, .. }) => {
+        Err(RepoError::UniqueConstraintViolation {
+            fields,
+            ..
+        }) => {
             assert!(fields.contains(&"username".to_string()));
         }
         other => panic!("expected UniqueConstraintViolation, got {other:?}"),
@@ -117,12 +133,17 @@ pub async fn run() -> Result<()> {
 
     // ============ Valid New Account ============
     // Completely different email and username
-    let bob_id = snugom_create!(client, Account {
-        email: "bob@example.com".to_string(),
-        username: "bob".to_string(),
-        display_name: "Bob Jones".to_string(),
-        created_at: Utc::now(),
-    }).await?.id;
+    let bob_id = snugom_create!(
+        client,
+        Account {
+            email: "bob@example.com".to_string(),
+            username: "bob".to_string(),
+            display_name: "Bob Jones".to_string(),
+            created_at: Utc::now(),
+        }
+    )
+    .await?
+    .id;
 
     let bob = accounts.get_or_error(&bob_id).await?;
     assert_eq!(bob.email, "bob@example.com");
@@ -144,7 +165,8 @@ pub async fn run() -> Result<()> {
     // Updating to a new unique value should succeed
     snugom_update!(client, Account(entity_id = &bob_id) {
         email: "robert@example.com".to_string(),
-    }).await?;
+    })
+    .await?;
 
     // Verify update
     let updated_bob = accounts.get_or_error(&bob_id).await?;

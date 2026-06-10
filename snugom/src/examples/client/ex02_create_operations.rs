@@ -14,7 +14,7 @@ use super::support;
 use crate::{SnugomClient, SnugomEntity, snugom_create};
 
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "products")]
+#[snugom(schema = 1, collection = "products")]
 struct Product {
     #[snugom(id)]
     id: String,
@@ -44,12 +44,16 @@ pub async fn run() -> Result<()> {
     // ============ snugom_create! macro ============
     // Uses Prisma-style struct literal syntax
     // Returns CreateResult with id and responses
-    let created = snugom_create!(client, Product {
-        name: "Laptop".to_string(),
-        price: 999,
-        category: "electronics".to_string(),
-        created_at: Utc::now(),
-    }).await?;
+    let created = snugom_create!(
+        client,
+        Product {
+            name: "Laptop".to_string(),
+            price: 999,
+            category: "electronics".to_string(),
+            created_at: Utc::now(),
+        }
+    )
+    .await?;
 
     // CreateResult gives you the ID
     let laptop_id = created.id.clone();
@@ -61,12 +65,16 @@ pub async fn run() -> Result<()> {
     assert_eq!(laptop.price, 999);
 
     // ============ Create another entity ============
-    let created = snugom_create!(client, Product {
-        name: "Smartphone".to_string(),
-        price: 699,
-        category: "electronics".to_string(),
-        created_at: Utc::now(),
-    }).await?;
+    let created = snugom_create!(
+        client,
+        Product {
+            name: "Smartphone".to_string(),
+            price: 699,
+            category: "electronics".to_string(),
+            created_at: Utc::now(),
+        }
+    )
+    .await?;
 
     let phone = products.get_or_error(&created.id).await?;
     assert_eq!(phone.name, "Smartphone");

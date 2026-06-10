@@ -189,8 +189,6 @@ pub struct CascadeRelationSpec {
     pub alias: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_collection: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target_service: Option<String>,
     pub cascade: CascadeDirective,
     #[serde(skip_serializing_if = "skip_false")]
     pub maintain_reverse: bool,
@@ -204,8 +202,6 @@ pub struct DeleteCascadeRelation {
     pub relation_key: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_collection: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target_service: Option<String>,
     pub cascade: CascadeDirective,
     #[serde(skip_serializing_if = "skip_false")]
     pub maintain_reverse: bool,
@@ -236,7 +232,10 @@ impl MutationPlan {
         Self::default()
     }
 
-    pub fn push(&mut self, command: MutationCommand) {
+    pub fn push(
+        &mut self,
+        command: MutationCommand,
+    ) {
         self.commands.push(command);
     }
 
@@ -306,10 +305,7 @@ pub fn build_unique_constraint_checks(
     for constraint in &descriptor.unique_constraints {
         let mut values = Vec::with_capacity(constraint.fields.len());
         for field_name in &constraint.fields {
-            let value = payload
-                .get(field_name)
-                .cloned()
-                .unwrap_or(serde_json::Value::Null);
+            let value = payload.get(field_name).cloned().unwrap_or(serde_json::Value::Null);
             values.push(value);
         }
 
@@ -387,4 +383,39 @@ pub fn build_entity_patch(
 
 fn skip_false(value: &bool) -> bool {
     !*value
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Find query types — NOT part of MutationCommand; reads are separate from writes
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Query payload for the entity_find Lua script.
+#[derive(Debug, Serialize)]
+pub struct FindQuery {
+    pub find: FindPayload,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FindPayload {
+    pub entity_key: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub includes: Vec<FindInclude>,
+}
+
+/// Include specification sent to the Lua script.
+/// Supports recursive nesting for multi-level relation loading.
+#[derive(Debug, Serialize)]
+pub struct FindInclude {
+    pub alias: String,
+    /// Exact relation SET key (top-level includes where parent ID is known).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relation_key: Option<String>,
+    /// Relation key prefix (nested includes — child ID appended at runtime in Lua).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relation_key_prefix: Option<String>,
+    /// Key prefix for child entities: child_prefix + child_id = full entity key.
+    pub child_prefix: String,
+    /// Nested includes (recursive).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub includes: Vec<FindInclude>,
 }

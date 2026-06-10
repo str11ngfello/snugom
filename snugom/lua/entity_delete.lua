@@ -10,22 +10,17 @@ local function split_key(key)
     return parts
 end
 
-local function compute_child_relations(child_specs, prefix, service, entity_id)
+local function compute_child_relations(child_specs, prefix, entity_id)
     local result = {}
     for i = 1, #child_specs do
         local spec = child_specs[i]
-        local child_service = spec["target_service"]
-        if child_service == nil then
-            child_service = service
-        end
         local child_alias = spec["alias"]
-        local child_relation_key = table.concat({ prefix, child_service, "rel", child_alias, entity_id }, ":")
-        local nested = compute_child_relations(spec["child_relations"] or {}, prefix, child_service, entity_id)
+        local child_relation_key = table.concat({ prefix, "rel", child_alias, entity_id }, ":")
+        local nested = compute_child_relations(spec["child_relations"] or {}, prefix, entity_id)
         table.insert(result, {
             alias = child_alias,
             relation_key = child_relation_key,
             target_collection = spec["target_collection"],
-            target_service = spec["target_service"],
             cascade = spec["cascade"],
             maintain_reverse = spec["maintain_reverse"] == true,
             child_relations = nested,
@@ -69,15 +64,14 @@ local function delete_with_relations(key, expected_version, relations, unique_co
         end
     end
 
-    -- Key structure: {prefix}:{service}:{collection}:{entity_id}
+    -- Key structure: {prefix}:{collection}:{entity_id}
     local key_parts = {}
     for part in string.gmatch(key, "([^:]+)") do
         table.insert(key_parts, part)
     end
 
     local prefix = key_parts[1]
-    local service = key_parts[2]
-    local collection = key_parts[3]
+    local collection = key_parts[2]
 
     -- Clean up unique constraint indexes before deleting the entity
     if #unique_constraints > 0 then
@@ -115,10 +109,10 @@ local function delete_with_relations(key, expected_version, relations, unique_co
                     -- Build unique index key
                     local unique_key
                     if #fields == 1 then
-                        unique_key = table.concat({ prefix, service, collection, "unique", fields[1] }, ":")
+                        unique_key = table.concat({ prefix, collection, "unique", fields[1] }, ":")
                     else
                         local field_suffix = table.concat(fields, "_")
-                        unique_key = table.concat({ prefix, service, collection, "unique_compound", field_suffix }, ":")
+                        unique_key = table.concat({ prefix, collection, "unique_compound", field_suffix }, ":")
                     end
 
                     -- Remove the entry from the unique index
@@ -141,26 +135,22 @@ local function delete_with_relations(key, expected_version, relations, unique_co
         local reverse_alias
 
         if maintain_reverse then
-            -- Relation key structure: {prefix}:{service}:rel:{alias}:{left_id}
+            -- Relation key structure: {prefix}:rel:{alias}:{left_id}
             relation_parts = split_key(relation_key)
-            alias = relation_parts[4]
-            left_id = relation_parts[5]
+            alias = relation_parts[3]
+            left_id = relation_parts[4]
             reverse_alias = alias .. "_reverse"
         end
 
         if cascade == "delete_dependents" then
             local members = redis.call("SMEMBERS", relation_key)
             local target_collection = relation["target_collection"]
-            local target_service = relation["target_service"]
-            if target_service == nil then
-                target_service = service
-            end
             local child_specs = relation["child_relations"] or {}
             if target_collection ~= nil then
                 for j = 1, #members do
                     local member_id = members[j]
-                    local child_key = table.concat({ prefix, target_service, target_collection, member_id }, ":")
-                    local child_relations_payload = compute_child_relations(child_specs, prefix, target_service, member_id)
+                    local child_key = table.concat({ prefix, target_collection, member_id }, ":")
+                    local child_relations_payload = compute_child_relations(child_specs, prefix, member_id)
                     -- Unique constraints for child entities are passed through the relation info
                     local child_unique_constraints = relation["unique_constraints"] or {}
                     local result = delete_with_relations(child_key, nil, child_relations_payload, child_unique_constraints)
@@ -172,7 +162,7 @@ local function delete_with_relations(key, expected_version, relations, unique_co
             if maintain_reverse then
                 for j = 1, #members do
                     local member_id = members[j]
-                    local reverse_key = table.concat({ prefix, service, "rel", reverse_alias, member_id }, ":")
+                    local reverse_key = table.concat({ prefix, "rel", reverse_alias, member_id }, ":")
                     redis.call("SREM", reverse_key, left_id)
                     if redis.call("SCARD", reverse_key) == 0 then
                         redis.call("DEL", reverse_key)
@@ -185,7 +175,7 @@ local function delete_with_relations(key, expected_version, relations, unique_co
                 local members = redis.call("SMEMBERS", relation_key)
                 for j = 1, #members do
                     local member_id = members[j]
-                    local reverse_key = table.concat({ prefix, service, "rel", reverse_alias, member_id }, ":")
+                    local reverse_key = table.concat({ prefix, "rel", reverse_alias, member_id }, ":")
                     redis.call("SREM", reverse_key, left_id)
                     if redis.call("SCARD", reverse_key) == 0 then
                         redis.call("DEL", reverse_key)
@@ -196,11 +186,11 @@ local function delete_with_relations(key, expected_version, relations, unique_co
         end
 
         if maintain_reverse then
-            local reverse_self_key = table.concat({ prefix, service, "rel", reverse_alias, left_id }, ":")
+            local reverse_self_key = table.concat({ prefix, "rel", reverse_alias, left_id }, ":")
             local parents = redis.call("SMEMBERS", reverse_self_key)
             for j = 1, #parents do
                 local parent_id = parents[j]
-                local parent_forward_key = table.concat({ prefix, service, "rel", alias, parent_id }, ":")
+                local parent_forward_key = table.concat({ prefix, "rel", alias, parent_id }, ":")
                 redis.call("SREM", parent_forward_key, left_id)
                 if redis.call("SCARD", parent_forward_key) == 0 then
                     redis.call("DEL", parent_forward_key)

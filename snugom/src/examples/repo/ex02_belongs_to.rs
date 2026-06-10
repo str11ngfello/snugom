@@ -7,7 +7,7 @@ use super::support;
 use crate::{SnugomEntity, repository::Repo};
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "examples", collection = "accounts")]
+#[snugom(schema = 1, collection = "accounts")]
 struct Account {
     #[snugom(id)]
     id: String,
@@ -17,14 +17,14 @@ struct Account {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "examples", collection = "profiles")]
+#[snugom(schema = 1, collection = "profiles")]
 struct Profile {
     #[snugom(id)]
     id: String,
     #[snugom(created_at)]
     created_at: chrono::DateTime<Utc>,
     display_name: String,
-    #[snugom(relation(cascade = "delete"))]
+    #[snugom(relation(target = "accounts", alias = "account", cascade = "delete"))]
     account_id: String,
 }
 
@@ -36,7 +36,12 @@ pub async fn run() -> Result<()> {
     let profile_repo: Repo<Profile> = Repo::new(prefix);
 
     let account = account_repo
-        .create_with_conn(&mut conn, Account::validation_builder().email("hello@example.com".to_string()).created_at(Utc::now()))
+        .create_with_conn(
+            &mut conn,
+            Account::validation_builder()
+                .email("hello@example.com".to_string())
+                .created_at(Utc::now()),
+        )
         .await?;
     let account_id = account.id.clone();
 

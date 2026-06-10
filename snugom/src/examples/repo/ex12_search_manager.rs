@@ -3,12 +3,12 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 use super::support;
+use crate::SnugomEntity;
 use crate::repository::Repo;
 use crate::search::SearchQuery;
-use crate::SnugomEntity;
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "examples", collection = "search_events")]
+#[snugom(schema = 1, collection = "search_events")]
 struct SearchEvent {
     #[snugom(id)]
     id: String,

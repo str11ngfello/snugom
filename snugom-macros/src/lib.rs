@@ -12,12 +12,13 @@ mod client_macro;
 mod client_ops_macro;
 mod filters;
 mod parsed;
+mod response_macro;
 mod snug_macro;
 
 use client_macro::ParsedClient;
 use client_ops_macro::{
-    ClientCreateInvocation, ClientDeleteInvocation, ClientGetOrCreateInvocation,
-    ClientUpdateInvocation, ClientUpsertInvocation,
+    ClientCreateInvocation, ClientDeleteInvocation, ClientFindInvocation, ClientFindManyInvocation,
+    ClientGetOrCreateInvocation, ClientUpdateInvocation, ClientUpsertInvocation,
 };
 use parsed::ParsedEntity;
 use snug_macro::SnugInvocation;
@@ -72,6 +73,15 @@ pub fn snug(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(SearchableFilters, attributes(filter))]
 pub fn searchable_filters_derive(input: TokenStream) -> TokenStream {
     filters::derive_searchable_filters(input)
+}
+
+#[proc_macro_derive(SnugomResponse, attributes(snugom_response, snugom_include))]
+pub fn derive_snugom_response(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    match response_macro::derive_snugom_response(input) {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
 }
 
 /// Create an entity using a client.
@@ -184,6 +194,74 @@ pub fn snugom_upsert(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn snugom_get_or_create(input: TokenStream) -> TokenStream {
     let invocation = parse_macro_input!(input as ClientGetOrCreateInvocation);
+    match invocation.emit() {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+/// Find an entity by ID with optional relation includes.
+///
+/// Uses an atomic Lua script for simple includes and FT.SEARCH for
+/// includes with options (limit, sort, filter). Supports nested includes.
+///
+/// # Examples
+///
+/// ```ignore
+/// // No includes — returns entity directly
+/// let guild = snugom_find!(client, Guild(&guild_id)).await?;
+///
+/// // With includes — returns tuple
+/// let (guild, members) = snugom_find!(client, Guild(&guild_id) {
+///     guild_members: [include GuildMember],
+/// }).await?;
+///
+/// // With options
+/// let (guild, members) = snugom_find!(client, Guild(&guild_id) {
+///     guild_members: [include GuildMember { limit: 5, sort: "-joined_at" }],
+/// }).await?;
+///
+/// // Nested includes
+/// let (guild, members_with_profiles) = snugom_find!(client, Guild(&guild_id) {
+///     guild_members: [include GuildMember {
+///         user_profile: [include UserProfile],
+///     }],
+/// }).await?;
+/// ```
+#[proc_macro]
+pub fn snugom_find(input: TokenStream) -> TokenStream {
+    let invocation = parse_macro_input!(input as ClientFindInvocation);
+    match invocation.emit() {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+/// Find multiple entities with optional relation includes.
+///
+/// Executes a search query and optionally loads related entities for each result.
+/// Query parameters go in parentheses, includes in optional braces.
+///
+/// # Examples
+///
+/// ```ignore
+/// // No includes
+/// let result = snugom_find_many!(client, Guild(
+///     filter = "status:eq:active",
+///     page_size = 10,
+/// )).await?;
+///
+/// // With includes
+/// let result = snugom_find_many!(client, Guild(
+///     filter = "status:eq:active",
+///     page_size = 10,
+/// ) {
+///     guild_members: [include GuildMember],
+/// }).await?;
+/// ```
+#[proc_macro]
+pub fn snugom_find_many(input: TokenStream) -> TokenStream {
+    let invocation = parse_macro_input!(input as ClientFindManyInvocation);
     match invocation.emit() {
         Ok(tokens) => tokens.into(),
         Err(err) => err.to_compile_error().into(),

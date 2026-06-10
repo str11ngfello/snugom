@@ -7,7 +7,7 @@ use super::support;
 use crate::{SnugomEntity, repository::Repo};
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "examples", collection = "hello")]
+#[snugom(schema = 1, collection = "hello")]
 struct HelloEntity {
     #[snugom(id)]
     id: String,

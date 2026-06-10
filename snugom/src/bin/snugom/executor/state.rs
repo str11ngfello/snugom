@@ -33,7 +33,9 @@ pub struct MigrationState {
 impl MigrationState {
     /// Create a new migration state manager.
     pub fn new(conn: ConnectionManager) -> Self {
-        Self { conn }
+        Self {
+            conn,
+        }
     }
 
     /// List all applied migrations.
@@ -48,9 +50,7 @@ impl MigrationState {
         match data {
             Some(json_str) => {
                 // JSON.GET returns an array
-                let wrapper: Vec<Vec<AppliedMigration>> =
-                    serde_json::from_str(&json_str)
-                        .unwrap_or_default();
+                let wrapper: Vec<Vec<AppliedMigration>> = serde_json::from_str(&json_str).unwrap_or_default();
                 Ok(wrapper.into_iter().next().unwrap_or_default())
             }
             None => Ok(Vec::new()),
@@ -58,13 +58,19 @@ impl MigrationState {
     }
 
     /// Check if a migration has been applied.
-    pub async fn is_applied(&mut self, name: &str) -> Result<bool> {
+    pub async fn is_applied(
+        &mut self,
+        name: &str,
+    ) -> Result<bool> {
         let applied = self.list_applied().await?;
         Ok(applied.iter().any(|m| m.name == name))
     }
 
     /// Record a migration as applied.
-    pub async fn record_applied(&mut self, migration: AppliedMigration) -> Result<()> {
+    pub async fn record_applied(
+        &mut self,
+        migration: AppliedMigration,
+    ) -> Result<()> {
         // First, ensure the state structure exists
         let exists: bool = redis::cmd("EXISTS")
             .arg(MIGRATION_STATE_KEY)
@@ -84,8 +90,7 @@ impl MigrationState {
         }
 
         // Append the migration to the applied list
-        let migration_json = serde_json::to_string(&migration)
-            .context("Failed to serialize migration record")?;
+        let migration_json = serde_json::to_string(&migration).context("Failed to serialize migration record")?;
 
         let _: () = redis::cmd("JSON.ARRAPPEND")
             .arg(MIGRATION_STATE_KEY)
@@ -100,7 +105,10 @@ impl MigrationState {
 
     /// Remove a migration record (for rollback).
     #[allow(dead_code)]
-    pub async fn remove_applied(&mut self, name: &str) -> Result<bool> {
+    pub async fn remove_applied(
+        &mut self,
+        name: &str,
+    ) -> Result<bool> {
         let applied = self.list_applied().await?;
         let index = applied.iter().position(|m| m.name == name);
 
@@ -137,7 +145,10 @@ impl MigrationState {
     }
 
     /// Mark a migration as rolled back (remove from applied).
-    pub async fn mark_rolled_back(&mut self, name: &str) -> Result<bool> {
+    pub async fn mark_rolled_back(
+        &mut self,
+        name: &str,
+    ) -> Result<bool> {
         self.remove_applied(name).await
     }
 

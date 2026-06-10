@@ -6,7 +6,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use super::context::MigrationContext;
-use super::state::{calculate_checksum, AppliedMigration, MigrationState};
+use super::state::{AppliedMigration, MigrationState, calculate_checksum};
 use crate::output::OutputManager;
 
 /// Statistics from a migration run.
@@ -45,10 +45,11 @@ pub struct MigrationRunner {
 
 impl MigrationRunner {
     /// Create a new migration runner.
-    pub async fn new(redis_url: &str, dry_run: bool) -> Result<Self> {
-        let ctx = MigrationContext::connect(redis_url)
-            .await?
-            .with_dry_run(dry_run);
+    pub async fn new(
+        redis_url: &str,
+        dry_run: bool,
+    ) -> Result<Self> {
+        let ctx = MigrationContext::connect(redis_url).await?.with_dry_run(dry_run);
 
         // Clone the connection for state tracking
         let mut state_conn = MigrationContext::connect(redis_url).await?;
@@ -70,17 +71,14 @@ impl MigrationRunner {
         }
 
         // Read all .rs files (except mod.rs)
-        let entries = std::fs::read_dir(migrations_dir)
-            .context("Failed to read migrations directory")?;
+        let entries = std::fs::read_dir(migrations_dir).context("Failed to read migrations directory")?;
 
         for entry in entries {
             let entry = entry?;
             let path = entry.path();
 
             if path.extension().map(|e| e == "rs").unwrap_or(false) {
-                let filename = path.file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("");
+                let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
                 if filename == "mod.rs" {
                     continue;
@@ -136,8 +134,7 @@ impl MigrationRunner {
         // Check which are already applied
         output.progress("Checking applied migrations...");
         let applied = self.state.list_applied().await?;
-        let applied_names: std::collections::HashSet<_> =
-            applied.iter().map(|m| m.name.as_str()).collect();
+        let applied_names: std::collections::HashSet<_> = applied.iter().map(|m| m.name.as_str()).collect();
         output.clear_line();
 
         let pending: Vec<_> = migrations
@@ -190,10 +187,7 @@ impl MigrationRunner {
                 self.state.record_applied(record).await?;
             }
 
-            output.success(&format!(
-                "Applied in {}ms",
-                migration_time
-            ));
+            output.success(&format!("Applied in {}ms", migration_time));
 
             stats.migrations_applied += 1;
         }
@@ -316,14 +310,8 @@ mod tests {
         std::fs::create_dir(&migrations_dir).unwrap();
 
         // Create two files with different content
-        std::fs::write(
-            migrations_dir.join("_20241228_a.rs"),
-            "pub fn migrate() { /* version 1 */ }",
-        ).unwrap();
-        std::fs::write(
-            migrations_dir.join("_20241228_b.rs"),
-            "pub fn migrate() { /* version 2 */ }",
-        ).unwrap();
+        std::fs::write(migrations_dir.join("_20241228_a.rs"), "pub fn migrate() { /* version 1 */ }").unwrap();
+        std::fs::write(migrations_dir.join("_20241228_b.rs"), "pub fn migrate() { /* version 2 */ }").unwrap();
 
         let migrations = MigrationRunner::discover_migrations(&migrations_dir).unwrap();
 

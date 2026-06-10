@@ -30,7 +30,10 @@ pub(crate) fn derive_searchable_filters(input: TokenStream) -> TokenStream {
 
         // Determine field type from the type name
         let field_type = match &field.ty {
-            Type::Path(TypePath { path, .. }) => {
+            Type::Path(TypePath {
+                path,
+                ..
+            }) => {
                 if let Some(segment) = path.segments.last() {
                     let type_name = segment.ident.to_string();
                     match type_name.as_str() {

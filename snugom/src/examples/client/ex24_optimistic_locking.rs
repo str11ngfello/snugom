@@ -12,12 +12,12 @@ use redis::aio::ConnectionManager;
 use serde::{Deserialize, Serialize};
 
 use super::support;
-use crate::{SnugomClient, SnugomEntity, snugom_create, errors::RepoError};
+use crate::{SnugomClient, SnugomEntity, errors::RepoError, snugom_create};
 
 /// An inventory item with stock tracking.
 /// Uses version field for optimistic locking to prevent race conditions.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "inventory_items")]
+#[snugom(schema = 1, collection = "inventory_items")]
 struct InventoryItem {
     #[snugom(id)]
     id: String,
@@ -55,23 +55,24 @@ pub async fn run() -> Result<()> {
     // ============ Version Auto-Increment ============
     {
         // Create item - version starts at 1
-        let item_id = snugom_create!(client, InventoryItem {
-            name: "Widget".to_string(),
-            quantity: 100,
-            price: 999,
-            created_at: Utc::now(),
-        }).await?.id;
+        let item_id = snugom_create!(
+            client,
+            InventoryItem {
+                name: "Widget".to_string(),
+                quantity: 100,
+                price: 999,
+                created_at: Utc::now(),
+            }
+        )
+        .await?
+        .id;
 
         let item = items.get_or_error(&item_id).await?;
         assert_eq!(item.version, 1, "new entity should have version 1");
 
         // Update item - version increments to 2
         items
-            .update(
-                InventoryItem::patch_builder()
-                    .entity_id(&item.id)
-                    .quantity(95),
-            )
+            .update(InventoryItem::patch_builder().entity_id(&item.id).quantity(95))
             .await?;
 
         let updated = items.get_or_error(&item.id).await?;
@@ -80,11 +81,7 @@ pub async fn run() -> Result<()> {
 
         // Another update - version increments to 3
         items
-            .update(
-                InventoryItem::patch_builder()
-                    .entity_id(&item.id)
-                    .quantity(90),
-            )
+            .update(InventoryItem::patch_builder().entity_id(&item.id).quantity(90))
             .await?;
 
         let updated = items.get_or_error(&item.id).await?;
@@ -93,12 +90,17 @@ pub async fn run() -> Result<()> {
 
     // ============ Conditional Update with Version ============
     {
-        let item_id = snugom_create!(client, InventoryItem {
-            name: "Gadget".to_string(),
-            quantity: 50,
-            price: 1999,
-            created_at: Utc::now(),
-        }).await?.id;
+        let item_id = snugom_create!(
+            client,
+            InventoryItem {
+                name: "Gadget".to_string(),
+                quantity: 50,
+                price: 1999,
+                created_at: Utc::now(),
+            }
+        )
+        .await?
+        .id;
 
         let item = items.get_or_error(&item_id).await?;
 
@@ -123,7 +125,11 @@ pub async fn run() -> Result<()> {
             .await;
 
         match result {
-            Err(RepoError::VersionConflict { expected, actual, .. }) => {
+            Err(RepoError::VersionConflict {
+                expected,
+                actual,
+                ..
+            }) => {
                 assert_eq!(expected, Some(1));
                 assert_eq!(actual, Some(2));
             }
@@ -137,12 +143,17 @@ pub async fn run() -> Result<()> {
 
     // ============ Read-Modify-Write Pattern ============
     {
-        let item_id = snugom_create!(client, InventoryItem {
-            name: "Thingamajig".to_string(),
-            quantity: 200,
-            price: 499,
-            created_at: Utc::now(),
-        }).await?.id;
+        let item_id = snugom_create!(
+            client,
+            InventoryItem {
+                name: "Thingamajig".to_string(),
+                quantity: 200,
+                price: 499,
+                created_at: Utc::now(),
+            }
+        )
+        .await?
+        .id;
 
         let item = items.get_or_error(&item_id).await?;
 
@@ -170,7 +181,9 @@ pub async fn run() -> Result<()> {
                     // Success - update applied
                     break;
                 }
-                Err(RepoError::VersionConflict { .. }) => {
+                Err(RepoError::VersionConflict {
+                    ..
+                }) => {
                     // Conflict - refetch and retry
                     retries -= 1;
                     if retries == 0 {
@@ -189,29 +202,32 @@ pub async fn run() -> Result<()> {
 
     // ============ Conditional Delete ============
     {
-        let item_id = snugom_create!(client, InventoryItem {
-            name: "Temporary Item".to_string(),
-            quantity: 10,
-            price: 100,
-            created_at: Utc::now(),
-        }).await?.id;
+        let item_id = snugom_create!(
+            client,
+            InventoryItem {
+                name: "Temporary Item".to_string(),
+                quantity: 10,
+                price: 100,
+                created_at: Utc::now(),
+            }
+        )
+        .await?
+        .id;
 
         let item = items.get_or_error(&item_id).await?;
 
         // Update the item (version becomes 2)
         items
-            .update(
-                InventoryItem::patch_builder()
-                    .entity_id(&item.id)
-                    .quantity(0),
-            )
+            .update(InventoryItem::patch_builder().entity_id(&item.id).quantity(0))
             .await?;
 
         // Try to delete with old version - fails
         let result = items.delete_with_version(&item.id, item.version as u64).await;
 
         match result {
-            Err(RepoError::VersionConflict { .. }) => {
+            Err(RepoError::VersionConflict {
+                ..
+            }) => {
                 // Expected - version has changed
             }
             _ => panic!("expected VersionConflict error"),
@@ -222,9 +238,7 @@ pub async fn run() -> Result<()> {
 
         // Delete with correct version
         let current = items.get_or_error(&item.id).await?;
-        items
-            .delete_with_version(&item.id, current.version as u64)
-            .await?;
+        items.delete_with_version(&item.id, current.version as u64).await?;
 
         // Now it's gone
         assert!(!items.exists(&item.id).await?);
@@ -232,12 +246,17 @@ pub async fn run() -> Result<()> {
 
     // ============ Update Without Version (Unconditional) ============
     {
-        let item_id = snugom_create!(client, InventoryItem {
-            name: "Unconditional Item".to_string(),
-            quantity: 100,
-            price: 500,
-            created_at: Utc::now(),
-        }).await?.id;
+        let item_id = snugom_create!(
+            client,
+            InventoryItem {
+                name: "Unconditional Item".to_string(),
+                quantity: 100,
+                price: 500,
+                created_at: Utc::now(),
+            }
+        )
+        .await?
+        .id;
 
         let item = items.get_or_error(&item_id).await?;
 

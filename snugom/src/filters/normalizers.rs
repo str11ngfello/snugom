@@ -7,7 +7,10 @@ use crate::errors::RepoError;
 use crate::search::{FilterCondition, FilterDescriptor, FilterOperator};
 
 /// Builds a numeric filter for range queries
-pub fn build_numeric_filter(descriptor: FilterDescriptor, target_field: &str) -> Result<FilterCondition, RepoError> {
+pub fn build_numeric_filter(
+    descriptor: FilterDescriptor,
+    target_field: &str,
+) -> Result<FilterCondition, RepoError> {
     match descriptor.operator {
         FilterOperator::Eq => {
             let value = descriptor.values.first().ok_or_else(|| RepoError::InvalidRequest {
@@ -63,7 +66,10 @@ pub fn parse_numeric_bound(value: Option<&String>) -> Result<Option<f64>, RepoEr
 }
 
 /// Builds a TEXT prefix filter for prefix matching on TEXT fields
-pub fn build_text_prefix_filter(descriptor: FilterDescriptor, target_field: &str) -> Result<FilterCondition, RepoError> {
+pub fn build_text_prefix_filter(
+    descriptor: FilterDescriptor,
+    target_field: &str,
+) -> Result<FilterCondition, RepoError> {
     if descriptor.operator != FilterOperator::Prefix {
         return Err(RepoError::InvalidRequest {
             message: format!("Expected prefix operator for TEXT field {}", target_field),
@@ -79,7 +85,10 @@ pub fn build_text_prefix_filter(descriptor: FilterDescriptor, target_field: &str
 }
 
 /// Builds a TEXT contains filter for substring matching on TEXT fields
-pub fn build_text_contains_filter(descriptor: FilterDescriptor, target_field: &str) -> Result<FilterCondition, RepoError> {
+pub fn build_text_contains_filter(
+    descriptor: FilterDescriptor,
+    target_field: &str,
+) -> Result<FilterCondition, RepoError> {
     if descriptor.operator != FilterOperator::Contains {
         return Err(RepoError::InvalidRequest {
             message: format!("Expected contains operator for TEXT field {}", target_field),
@@ -95,7 +104,10 @@ pub fn build_text_contains_filter(descriptor: FilterDescriptor, target_field: &s
 }
 
 /// Builds a TEXT exact filter for exact phrase matching on TEXT fields
-pub fn build_text_exact_filter(descriptor: FilterDescriptor, target_field: &str) -> Result<FilterCondition, RepoError> {
+pub fn build_text_exact_filter(
+    descriptor: FilterDescriptor,
+    target_field: &str,
+) -> Result<FilterCondition, RepoError> {
     if descriptor.operator != FilterOperator::Exact {
         return Err(RepoError::InvalidRequest {
             message: format!("Expected exact operator for TEXT field {}", target_field),
@@ -111,7 +123,10 @@ pub fn build_text_exact_filter(descriptor: FilterDescriptor, target_field: &str)
 }
 
 /// Builds a TEXT fuzzy filter for fuzzy matching on TEXT fields
-pub fn build_text_fuzzy_filter(descriptor: FilterDescriptor, target_field: &str) -> Result<FilterCondition, RepoError> {
+pub fn build_text_fuzzy_filter(
+    descriptor: FilterDescriptor,
+    target_field: &str,
+) -> Result<FilterCondition, RepoError> {
     if descriptor.operator != FilterOperator::Fuzzy {
         return Err(RepoError::InvalidRequest {
             message: format!("Expected fuzzy operator for TEXT field {}", target_field),
@@ -127,7 +142,10 @@ pub fn build_text_fuzzy_filter(descriptor: FilterDescriptor, target_field: &str)
 }
 
 /// Builds the appropriate TEXT filter based on the operator
-pub fn build_text_filter(descriptor: FilterDescriptor, target_field: &str) -> Result<FilterCondition, RepoError> {
+pub fn build_text_filter(
+    descriptor: FilterDescriptor,
+    target_field: &str,
+) -> Result<FilterCondition, RepoError> {
     match descriptor.operator {
         FilterOperator::Prefix => build_text_prefix_filter(descriptor, target_field),
         FilterOperator::Contains => build_text_contains_filter(descriptor, target_field),

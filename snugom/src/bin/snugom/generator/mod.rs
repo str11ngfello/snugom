@@ -9,5 +9,5 @@ mod codegen;
 mod source_updater;
 
 #[allow(unused_imports)]
-pub use codegen::{generate_migration_file, MigrationFile};
+pub use codegen::{MigrationFile, generate_migration_file};
 pub use source_updater::{update_migrations_mod, update_source_schema_version};

@@ -7,7 +7,7 @@ use super::support;
 use crate::{SnugomEntity, repository::Repo};
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "examples", collection = "projects")]
+#[snugom(schema = 1, collection = "projects")]
 struct Project {
     #[snugom(id)]
     id: String,
@@ -17,31 +17,31 @@ struct Project {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "examples", collection = "tasks")]
+#[snugom(schema = 1, collection = "tasks")]
 struct Task {
     #[snugom(id)]
     id: String,
     #[snugom(created_at)]
     created_at: chrono::DateTime<Utc>,
     title: String,
-    #[snugom(relation(cascade = "delete"))]
+    #[snugom(relation(target = "projects", alias = "project", cascade = "delete"))]
     project_id: String,
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "examples", collection = "subtasks")]
+#[snugom(schema = 1, collection = "subtasks")]
 struct SubTask {
     #[snugom(id)]
     id: String,
     #[snugom(created_at)]
     created_at: chrono::DateTime<Utc>,
     description: String,
-    #[snugom(relation(cascade = "delete"))]
+    #[snugom(relation(target = "tasks", alias = "task", cascade = "delete"))]
     task_id: String,
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "examples", collection = "detach_groups")]
+#[snugom(schema = 1, collection = "detach_groups")]
 struct DetachGroup {
     #[snugom(id)]
     id: String,
@@ -53,7 +53,7 @@ struct DetachGroup {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "examples", collection = "detach_users")]
+#[snugom(schema = 1, collection = "detach_users")]
 struct DetachUser {
     #[snugom(id)]
     id: String,

@@ -15,18 +15,27 @@ pub enum RepoError {
 
     /// Optimistic concurrency guard detected a stale version.
     #[error("version conflict (expected {expected:?}, actual {actual:?})")]
-    VersionConflict { expected: Option<u64>, actual: Option<u64> },
+    VersionConflict {
+        expected: Option<u64>,
+        actual: Option<u64>,
+    },
 
     /// Target entity was not found when performing a mutation.
     #[error("entity not found")]
-    NotFound { entity_id: Option<String> },
+    NotFound {
+        entity_id: Option<String>,
+    },
 
     /// Invalid input supplied to a repository/search operation.
     #[error("invalid request: {message}")]
-    InvalidRequest { message: String },
+    InvalidRequest {
+        message: String,
+    },
 
     /// Unique constraint violation - the value(s) already exist on another entity.
-    #[error("unique constraint violation: fields {fields:?} with values {values:?} already exist on entity '{existing_entity_id}'")]
+    #[error(
+        "unique constraint violation: fields {fields:?} with values {values:?} already exist on entity '{existing_entity_id}'"
+    )]
     UniqueConstraintViolation {
         fields: Vec<String>,
         values: Vec<String>,
@@ -35,11 +44,15 @@ pub enum RepoError {
 
     /// Entity already exists (for strict create operations).
     #[error("entity already exists: {entity_id}")]
-    AlreadyExists { entity_id: String },
+    AlreadyExists {
+        entity_id: String,
+    },
 
     /// Placeholder for other error kinds while the crate is scaffolded.
     #[error("{message}")]
-    Other { message: Cow<'static, str> },
+    Other {
+        message: Cow<'static, str>,
+    },
 }
 
 /// Collection of validation issues encountered while preparing a mutation.
@@ -60,7 +73,11 @@ impl ValidationError {
     }
 
     /// Convenience helper for constructing a single-field validation error.
-    pub fn single(field: impl Into<String>, code: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn single(
+        field: impl Into<String>,
+        code: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         Self::new([ValidationIssue::new(field, code, message)])
     }
 
@@ -78,7 +95,11 @@ pub struct ValidationIssue {
 }
 
 impl ValidationIssue {
-    pub fn new(field: impl Into<String>, code: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn new(
+        field: impl Into<String>,
+        code: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
             field: field.into(),
             code: code.into(),

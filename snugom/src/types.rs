@@ -4,7 +4,6 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 /// Placeholder metadata structures emitted by the derive macro in later phases.
 #[derive(Debug, Default, Clone)]
 pub struct EntityDescriptor {
-    pub service: String,
     pub collection: String,
     pub version: u32,
     pub id_field: Option<String>,
@@ -19,7 +18,6 @@ pub struct EntityDescriptor {
 pub struct RelationDescriptor {
     pub alias: String,
     pub target: String,
-    pub target_service: Option<String>,
     pub kind: RelationKind,
     pub cascade: CascadePolicy,
     pub foreign_key: Option<String>,
@@ -62,7 +60,10 @@ pub struct UniqueConstraintDescriptor {
 
 impl UniqueConstraintDescriptor {
     /// Create a single-field unique constraint
-    pub fn single(field: impl Into<String>, case_insensitive: bool) -> Self {
+    pub fn single(
+        field: impl Into<String>,
+        case_insensitive: bool,
+    ) -> Self {
         Self {
             fields: vec![field.into()],
             case_insensitive,
@@ -70,7 +71,10 @@ impl UniqueConstraintDescriptor {
     }
 
     /// Create a compound unique constraint over multiple fields
-    pub fn compound(fields: Vec<String>, case_insensitive: bool) -> Self {
+    pub fn compound(
+        fields: Vec<String>,
+        case_insensitive: bool,
+    ) -> Self {
         Self {
             fields,
             case_insensitive,
@@ -83,8 +87,7 @@ impl UniqueConstraintDescriptor {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum RelationKind {
     #[default]
     HasMany,
@@ -92,16 +95,31 @@ pub enum RelationKind {
     BelongsTo,
 }
 
+/// Find the foreign key field name on a child entity that points back to the given parent collection.
+///
+/// Scans the child entity's `BelongsTo` relations for one whose `target` matches
+/// `parent_collection`, and returns its `foreign_key` field name.
+///
+/// Used by `snugom_find!` for includes with options (FT.SEARCH path) where we need
+/// to know which child field references the parent.
+pub fn resolve_foreign_key(
+    child_descriptor: &EntityDescriptor,
+    parent_collection: &str,
+) -> Option<String> {
+    child_descriptor
+        .relations
+        .iter()
+        .find(|r| matches!(r.kind, RelationKind::BelongsTo) && r.target == parent_collection)
+        .and_then(|r| r.foreign_key.clone())
+}
 
-#[derive(Debug, Clone, Copy)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum CascadePolicy {
     Delete,
     Detach,
     #[default]
     None,
 }
-
 
 pub trait EntityMetadata {
     /// Whether this entity has at least one indexed field (filterable or sortable).
@@ -115,12 +133,10 @@ pub trait EntityMetadata {
 /// Trait for entities registered with SnugOM.
 ///
 /// This trait is automatically implemented by `#[derive(SnugomEntity)]`.
-/// It provides the service and collection names used for Redis key generation.
+/// It provides the collection name used for Redis key generation.
 pub trait SnugomModel: EntityMetadata {
-    /// The service name this entity belongs to
-    const SERVICE: &'static str;
-
-    /// The collection name for this entity (auto-pluralized from struct name or explicit override)
+    /// The collection name for this entity (auto-pluralized from struct name or explicit override).
+    /// Must be globally unique across all entities.
     const COLLECTION: &'static str;
 
     /// Get the ID of this entity instance.
@@ -152,8 +168,7 @@ pub struct FieldDescriptor {
 
 pub type DatetimeMirrors = Vec<DatetimeMirrorValue>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FieldType {
     String,
     Number,
@@ -163,7 +178,6 @@ pub enum FieldType {
     Object,
     DateTime,
 }
-
 
 #[derive(Debug, Clone, Copy)]
 pub enum ValidationScope {
@@ -221,7 +235,11 @@ pub struct DatetimeMirrorValue {
 }
 
 impl DatetimeMirrorValue {
-    pub fn new(field: impl Into<String>, mirror_field: impl Into<String>, value: Option<i64>) -> Self {
+    pub fn new(
+        field: impl Into<String>,
+        mirror_field: impl Into<String>,
+        value: Option<i64>,
+    ) -> Self {
         Self {
             field: field.into(),
             mirror_field: mirror_field.into(),
@@ -271,8 +289,7 @@ impl DatetimeMirrorValue {
 /// // guild.members == Loaded([...])
 /// // JSON: { "guild_id": "g_123", "name": "...", "members": [...] }
 /// ```
-#[derive(Debug, Clone, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum RelationState<T> {
     /// The relation was not requested/loaded. Will be omitted from JSON.
     #[default]
@@ -280,7 +297,6 @@ pub enum RelationState<T> {
     /// The relation was fetched. Contains the data (may be empty).
     Loaded(T),
 }
-
 
 impl<T> RelationState<T> {
     /// Returns `true` if the relation has been loaded.
@@ -325,7 +341,10 @@ impl<T> RelationState<T> {
 
     /// Consumes self and returns the loaded data, or a default value if not loaded.
     #[inline]
-    pub fn unwrap_or(self, default: T) -> T {
+    pub fn unwrap_or(
+        self,
+        default: T,
+    ) -> T {
         match self {
             RelationState::Loaded(v) => v,
             RelationState::NotLoaded => default,
@@ -334,7 +353,10 @@ impl<T> RelationState<T> {
 
     /// Consumes self and returns the loaded data, or computes a default if not loaded.
     #[inline]
-    pub fn unwrap_or_else<F: FnOnce() -> T>(self, f: F) -> T {
+    pub fn unwrap_or_else<F: FnOnce() -> T>(
+        self,
+        f: F,
+    ) -> T {
         match self {
             RelationState::Loaded(v) => v,
             RelationState::NotLoaded => f(),
@@ -343,7 +365,10 @@ impl<T> RelationState<T> {
 
     /// Maps a `RelationState<T>` to `RelationState<U>` by applying a function.
     #[inline]
-    pub fn map<U, F: FnOnce(T) -> U>(self, f: F) -> RelationState<U> {
+    pub fn map<U, F: FnOnce(T) -> U>(
+        self,
+        f: F,
+    ) -> RelationState<U> {
         match self {
             RelationState::Loaded(v) => RelationState::Loaded(f(v)),
             RelationState::NotLoaded => RelationState::NotLoaded,
@@ -373,7 +398,10 @@ impl<T: Default> RelationState<T> {
 
 // Serde implementation: Loaded serializes inner value, NotLoaded is skipped via skip_serializing_if
 impl<T: Serialize> Serialize for RelationState<T> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(
+        &self,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -422,7 +450,11 @@ impl<T> RelationData<T> {
     }
 
     /// Create new relation data with pagination metadata
-    pub fn with_metadata(items: T, total: u64, has_more: bool) -> Self {
+    pub fn with_metadata(
+        items: T,
+        total: u64,
+        has_more: bool,
+    ) -> Self {
         Self {
             items,
             total: Some(total),
@@ -483,27 +515,39 @@ impl RelationQueryOptions {
     }
 
     /// Set the maximum number of items to return
-    pub fn with_limit(mut self, limit: u32) -> Self {
+    pub fn with_limit(
+        mut self,
+        limit: u32,
+    ) -> Self {
         self.limit = Some(limit.min(MAX_RELATION_LIMIT));
         self
     }
 
     /// Set the sort specification
     /// Use "-field" for descending, "field" for ascending
-    pub fn with_sort(mut self, sort: impl Into<String>) -> Self {
+    pub fn with_sort(
+        mut self,
+        sort: impl Into<String>,
+    ) -> Self {
         self.sort = Some(sort.into());
         self
     }
 
     /// Set a filter expression
     /// Format: "field:op:value" (e.g., "role:eq:admin", "status:in:pending,approved")
-    pub fn with_filter(mut self, filter: impl Into<String>) -> Self {
+    pub fn with_filter(
+        mut self,
+        filter: impl Into<String>,
+    ) -> Self {
         self.filter = Some(filter.into());
         self
     }
 
     /// Set the pagination offset
-    pub fn with_offset(mut self, offset: u32) -> Self {
+    pub fn with_offset(
+        mut self,
+        offset: u32,
+    ) -> Self {
         self.offset = Some(offset);
         self
     }
@@ -529,4 +573,3 @@ impl RelationQueryOptions {
         })
     }
 }
-

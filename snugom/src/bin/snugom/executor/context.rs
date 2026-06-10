@@ -23,11 +23,17 @@ impl MigrationContext {
 
         let conn = ConnectionManager::new(client).await.context("Failed to connect to Redis")?;
 
-        Ok(Self { conn, dry_run: false })
+        Ok(Self {
+            conn,
+            dry_run: false,
+        })
     }
 
     /// Enable dry-run mode (no writes).
-    pub fn with_dry_run(mut self, dry_run: bool) -> Self {
+    pub fn with_dry_run(
+        mut self,
+        dry_run: bool,
+    ) -> Self {
         self.dry_run = dry_run;
         self
     }
@@ -115,7 +121,11 @@ impl MigrationContext {
     }
 
     /// Update a document.
-    pub async fn update_document(&mut self, key: &str, data: &Value) -> Result<()> {
+    pub async fn update_document(
+        &mut self,
+        key: &str,
+        data: &Value,
+    ) -> Result<()> {
         if self.dry_run {
             return Ok(());
         }
@@ -134,7 +144,11 @@ impl MigrationContext {
     }
 
     /// Update the schema version of a document.
-    pub async fn update_schema_version(&mut self, key: &str, new_version: u32) -> Result<()> {
+    pub async fn update_schema_version(
+        &mut self,
+        key: &str,
+        new_version: u32,
+    ) -> Result<()> {
         if self.dry_run {
             return Ok(());
         }
@@ -152,7 +166,10 @@ impl MigrationContext {
 
     /// Delete a document.
     #[allow(dead_code)]
-    pub async fn delete_document(&mut self, key: &str) -> Result<()> {
+    pub async fn delete_document(
+        &mut self,
+        key: &str,
+    ) -> Result<()> {
         if self.dry_run {
             return Ok(());
         }

@@ -3,14 +3,12 @@
 //! These tests verify the Lua-based atomic get_or_create that prevents race conditions
 //! when getting or creating entities.
 
+mod common;
+
 use chrono::{DateTime, Utc};
 use redis::aio::ConnectionManager;
 use serde::{Deserialize, Serialize};
-use snugom::{
-    SnugomEntity,
-    id::generate_entity_id,
-    repository::Repo,
-};
+use snugom::{SnugomEntity, id::generate_entity_id, repository::Repo};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 // ============================================================================
@@ -19,7 +17,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Entity with a unique name field for testing unique constraints.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone, PartialEq)]
-#[snugom(schema = 1, service = "get_or_create_test", collection = "settings")]
+#[snugom(schema = 1, collection = "settings")]
 struct TestSettings {
     #[snugom(id)]
     id: String,
@@ -58,8 +56,7 @@ impl TestNamespace {
 }
 
 async fn redis_conn() -> ConnectionManager {
-    let client = redis::Client::open("redis://127.0.0.1/").expect("redis client");
-    client.get_connection_manager().await.expect("connection manager")
+    common::redis_conn().await
 }
 
 // ============================================================================
@@ -79,7 +76,8 @@ async fn get_or_create_creates_when_not_exists() {
         .name("test-setting".to_string())
         .value("initial-value".to_string());
 
-    let result = repo.get_or_create(&mut conn, create_builder)
+    let result = repo
+        .get_or_create(&mut conn, create_builder)
         .await
         .expect("get_or_create should succeed");
 
@@ -105,7 +103,8 @@ async fn get_or_create_returns_existing_unchanged() {
         .name("test-setting".to_string())
         .value("original-value".to_string());
 
-    let result1 = repo.get_or_create(&mut conn, create_builder1)
+    let result1 = repo
+        .get_or_create(&mut conn, create_builder1)
         .await
         .expect("first get_or_create should succeed");
 
@@ -118,7 +117,8 @@ async fn get_or_create_returns_existing_unchanged() {
         .name("different-name".to_string())
         .value("different-value".to_string());
 
-    let result2 = repo.get_or_create(&mut conn, create_builder2)
+    let result2 = repo
+        .get_or_create(&mut conn, create_builder2)
         .await
         .expect("second get_or_create should succeed");
 
@@ -146,7 +146,8 @@ async fn get_or_create_enforces_unique_constraint() {
         .name("unique-name".to_string())
         .value("value1".to_string());
 
-    let result1 = repo.get_or_create(&mut conn, create_builder1)
+    let result1 = repo
+        .get_or_create(&mut conn, create_builder1)
         .await
         .expect("first create should succeed");
     assert!(result1.was_created());
@@ -200,14 +201,8 @@ async fn get_or_create_prevents_race_condition() {
     let result2 = result2.expect("task 2").expect("get_or_create 2");
 
     // Exactly one should be Created, the other should be Found
-    let created_count = [result1.was_created(), result2.was_created()]
-        .iter()
-        .filter(|&&b| b)
-        .count();
-    let found_count = [result1.was_found(), result2.was_found()]
-        .iter()
-        .filter(|&&b| b)
-        .count();
+    let created_count = [result1.was_created(), result2.was_created()].iter().filter(|&&b| b).count();
+    let found_count = [result1.was_found(), result2.was_found()].iter().filter(|&&b| b).count();
 
     assert_eq!(created_count, 1, "exactly one should create");
     assert_eq!(found_count, 1, "exactly one should find");
@@ -232,7 +227,8 @@ async fn get_or_create_result_helpers() {
         .name("helper-test".to_string())
         .value("test-value".to_string());
 
-    let result = repo.get_or_create(&mut conn, create_builder)
+    let result = repo
+        .get_or_create(&mut conn, create_builder)
         .await
         .expect("get_or_create should succeed");
 

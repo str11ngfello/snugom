@@ -30,7 +30,10 @@ pub async fn handle_init(
     initialize_project(args.force, output).await
 }
 
-async fn initialize_project(force: bool, output: &OutputManager) -> Result<()> {
+async fn initialize_project(
+    force: bool,
+    output: &OutputManager,
+) -> Result<()> {
     output.progress("Finding project root");
 
     let ctx = ProjectContext::find()?;
@@ -67,19 +70,21 @@ async fn initialize_project(force: bool, output: &OutputManager) -> Result<()> {
     Ok(())
 }
 
-fn create_dir_if_needed(path: &Path, output: &OutputManager) -> Result<()> {
+fn create_dir_if_needed(
+    path: &Path,
+    output: &OutputManager,
+) -> Result<()> {
     if !path.exists() {
-        fs::create_dir_all(path)
-            .with_context(|| format!("Failed to create directory: {path:?}"))?;
-        output.indented(
-            ICONS.folder,
-            &format!("Created {}", path.display()),
-        );
+        fs::create_dir_all(path).with_context(|| format!("Failed to create directory: {path:?}"))?;
+        output.indented(ICONS.folder, &format!("Created {}", path.display()));
     }
     Ok(())
 }
 
-fn create_config_file(path: &Path, output: &OutputManager) -> Result<()> {
+fn create_config_file(
+    path: &Path,
+    output: &OutputManager,
+) -> Result<()> {
     let config = SnugomConfig::default();
     let content = toml::to_string_pretty(&config).context("Failed to serialize config")?;
 
@@ -89,7 +94,10 @@ fn create_config_file(path: &Path, output: &OutputManager) -> Result<()> {
     Ok(())
 }
 
-fn create_migrations_module(migrations_dir: &Path, output: &OutputManager) -> Result<()> {
+fn create_migrations_module(
+    migrations_dir: &Path,
+    output: &OutputManager,
+) -> Result<()> {
     create_dir_if_needed(migrations_dir, output)?;
 
     let mod_path = migrations_dir.join("mod.rs");
@@ -104,8 +112,7 @@ pub fn register_all(registry: &mut MigrationRegistry) {
 }
 "#;
 
-        fs::write(&mod_path, content)
-            .with_context(|| format!("Failed to write migrations mod.rs: {mod_path:?}"))?;
+        fs::write(&mod_path, content).with_context(|| format!("Failed to write migrations mod.rs: {mod_path:?}"))?;
 
         output.indented(ICONS.file, &format!("Created {}", mod_path.display()));
     }

@@ -14,10 +14,10 @@ use redis::aio::ConnectionManager;
 use serde::{Deserialize, Serialize};
 
 use super::support;
-use crate::{SnugomClient, SnugomEntity, snugom_create, snugom_update, errors::RepoError};
+use crate::{SnugomClient, SnugomEntity, errors::RepoError, snugom_create, snugom_update};
 
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "profiles")]
+#[snugom(schema = 1, collection = "profiles")]
 struct Profile {
     #[snugom(id)]
     id: String,
@@ -57,13 +57,18 @@ pub async fn run() -> Result<()> {
     let mut profiles = client.profiles();
 
     // ============ Valid Entity ============
-    let profile_id = snugom_create!(client, Profile {
-        username: "alice".to_string(),
-        email: "alice@example.com".to_string(),
-        bio: "Hello, I'm Alice!".to_string(),
-        age: 25,
-        created_at: Utc::now(),
-    }).await?.id;
+    let profile_id = snugom_create!(
+        client,
+        Profile {
+            username: "alice".to_string(),
+            email: "alice@example.com".to_string(),
+            bio: "Hello, I'm Alice!".to_string(),
+            age: 25,
+            created_at: Utc::now(),
+        }
+    )
+    .await?
+    .id;
 
     let profile = profiles.get_or_error(&profile_id).await?;
     assert_eq!(profile.username, "alice");
@@ -144,9 +149,7 @@ pub async fn run() -> Result<()> {
     // Validation also applies to updates
     let update_result = profiles
         .update(
-            Profile::patch_builder()
-                .entity_id(&profile_id)
-                .username("x".to_string()), // Too short
+            Profile::patch_builder().entity_id(&profile_id).username("x".to_string()), // Too short
         )
         .await;
 
@@ -155,7 +158,8 @@ pub async fn run() -> Result<()> {
     // ============ Valid Update with Macro ============
     snugom_update!(client, Profile(entity_id = &profile_id) {
         bio: "Updated bio that is valid".to_string(),
-    }).await?;
+    })
+    .await?;
 
     let updated = profiles.get_or_error(&profile_id).await?;
     assert_eq!(updated.bio, "Updated bio that is valid");

@@ -5,8 +5,8 @@
 use anyhow::Result;
 use chrono::Utc;
 
-use crate::{CollectionHandle, SortOrder};
 use super::super::models::{Follow, Notification, User};
+use crate::{CollectionHandle, SortOrder};
 
 /// Follow a user.
 ///
@@ -308,12 +308,16 @@ pub async fn run(
 
     // Check counts
     let updated_alice = users.get_or_error(&alice.id).await?;
-    println!("    Alice: {} followers, {} following",
-        updated_alice.follower_count, updated_alice.following_count);
+    println!(
+        "    Alice: {} followers, {} following",
+        updated_alice.follower_count, updated_alice.following_count
+    );
 
     let updated_bob = users.get_or_error(&bob.id).await?;
-    println!("    Bob: {} followers, {} following",
-        updated_bob.follower_count, updated_bob.following_count);
+    println!(
+        "    Bob: {} followers, {} following",
+        updated_bob.follower_count, updated_bob.following_count
+    );
 
     // Check if Bob is following Alice
     let bob_follows_alice = is_following(follows, &bob.id, &alice.id).await?;
@@ -321,18 +325,24 @@ pub async fn run(
 
     // Get Alice's followers
     let alice_followers = get_followers(follows, users, &alice.id, 1, 10).await?;
-    println!("    Alice's followers: {:?}",
-        alice_followers.iter().map(|u| &u.username).collect::<Vec<_>>());
+    println!(
+        "    Alice's followers: {:?}",
+        alice_followers.iter().map(|u| &u.username).collect::<Vec<_>>()
+    );
 
     // Get Bob's mutual follows
     let bob_mutuals = get_mutual_follows(follows, users, &bob.id).await?;
-    println!("    Bob's mutual follows: {:?}",
-        bob_mutuals.iter().map(|u| &u.username).collect::<Vec<_>>());
+    println!(
+        "    Bob's mutual follows: {:?}",
+        bob_mutuals.iter().map(|u| &u.username).collect::<Vec<_>>()
+    );
 
     // Get suggestions for Carol
     let suggestions = get_follow_suggestions(follows, users, &carol.id, 5).await?;
-    println!("    Suggestions for Carol: {:?}",
-        suggestions.iter().map(|u| &u.username).collect::<Vec<_>>());
+    println!(
+        "    Suggestions for Carol: {:?}",
+        suggestions.iter().map(|u| &u.username).collect::<Vec<_>>()
+    );
 
     // Carol unfollows Alice
     unfollow_user(follows, users, &carol.id, &alice.id).await?;

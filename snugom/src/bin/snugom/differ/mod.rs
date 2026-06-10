@@ -11,8 +11,8 @@ mod loader;
 
 #[allow(unused_imports)]
 pub use changes::{
-    diff_schemas, ChangeType, EntityChange, EntityDiff, FieldChange, IndexChange,
-    MigrationComplexity, RelationChange, UniqueConstraintChange,
+    ChangeType, EntityChange, EntityDiff, FieldChange, IndexChange, MigrationComplexity, RelationChange,
+    UniqueConstraintChange, diff_schemas,
 };
 #[allow(unused_imports)]
 pub use loader::load_latest_snapshots;

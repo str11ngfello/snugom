@@ -39,9 +39,9 @@
 //! ### Repo Examples (13 examples)
 //! Low-level examples for those who need direct Repo access.
 
-pub mod support;
-pub mod repo;
 pub mod client;
+pub mod repo;
+pub mod support;
 
 /// Run all examples (both repo and client).
 pub async fn run_all() -> anyhow::Result<()> {

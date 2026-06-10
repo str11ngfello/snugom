@@ -2,12 +2,12 @@ use anyhow::Result;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use crate::errors::RepoError;
 use super::support;
+use crate::errors::RepoError;
 use crate::{SnugomEntity, repository::Repo};
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "examples", collection = "versioned_records")]
+#[snugom(schema = 1, collection = "versioned_records")]
 struct VersionedRecord {
     #[snugom(id)]
     id: String,
@@ -77,7 +77,10 @@ pub async fn run() -> Result<()> {
         .await
         .expect_err("stale version should conflict");
     match err {
-        RepoError::VersionConflict { expected, actual } => {
+        RepoError::VersionConflict {
+            expected,
+            actual,
+        } => {
             assert_eq!(expected, Some(1));
             assert_eq!(actual, Some(new_version));
         }

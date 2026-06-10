@@ -14,7 +14,10 @@ use super::schema::{
 /// # Arguments
 /// * `path` - Absolute path to the Rust source file
 /// * `relative_path` - Path relative to project root for display/tracking
-pub fn parse_entity_file(path: &Path, relative_path: &str) -> Result<Vec<EntitySchema>> {
+pub fn parse_entity_file(
+    path: &Path,
+    relative_path: &str,
+) -> Result<Vec<EntitySchema>> {
     let content = std::fs::read_to_string(path).with_context(|| format!("Failed to read file: {}", path.display()))?;
 
     // Parse the file with syn
@@ -43,7 +46,10 @@ pub fn parse_entity_file(path: &Path, relative_path: &str) -> Result<Vec<EntityS
 }
 
 /// Find the line number where a struct is defined
-fn find_struct_line(lines: &[&str], struct_name: &str) -> Option<usize> {
+fn find_struct_line(
+    lines: &[&str],
+    struct_name: &str,
+) -> Option<usize> {
     let pattern = format!("struct {struct_name}");
     for (i, line) in lines.iter().enumerate() {
         if line.contains(&pattern) {
@@ -69,7 +75,11 @@ fn has_snugom_entity_derive(attrs: &[Attribute]) -> bool {
 }
 
 /// Parse a struct definition into an EntitySchema
-fn parse_struct(item: &syn::ItemStruct, relative_path: &str, line: usize) -> Result<EntitySchema> {
+fn parse_struct(
+    item: &syn::ItemStruct,
+    relative_path: &str,
+    line: usize,
+) -> Result<EntitySchema> {
     let entity_name = item.ident.to_string();
 
     let mut schema = EntitySchema::new(entity_name.clone(), relative_path.to_string(), line);
@@ -104,7 +114,10 @@ fn parse_struct(item: &syn::ItemStruct, relative_path: &str, line: usize) -> Res
 }
 
 /// Parse struct-level #[snugom(...)] attributes
-fn parse_struct_attrs(attrs: &[Attribute], schema: &mut EntitySchema) -> Result<()> {
+fn parse_struct_attrs(
+    attrs: &[Attribute],
+    schema: &mut EntitySchema,
+) -> Result<()> {
     for attr in attrs {
         if !attr.path().is_ident("snugom") {
             continue;
@@ -203,7 +216,10 @@ fn parse_field(field: &Field) -> Result<Option<FieldInfo>> {
 }
 
 /// Parse #[snugom(...)] attribute on a field
-fn parse_field_snugom_attr(attr: &Attribute, info: &mut FieldInfo) -> Result<()> {
+fn parse_field_snugom_attr(
+    attr: &Attribute,
+    info: &mut FieldInfo,
+) -> Result<()> {
     attr.parse_nested_meta(|meta| {
         // id
         if meta.path.is_ident("id") {
@@ -288,7 +304,10 @@ fn parse_field_snugom_attr(attr: &Attribute, info: &mut FieldInfo) -> Result<()>
 }
 
 /// Parse #[serde(...)] attribute on a field
-fn parse_field_serde_attr(attr: &Attribute, info: &mut FieldInfo) -> Result<()> {
+fn parse_field_serde_attr(
+    attr: &Attribute,
+    info: &mut FieldInfo,
+) -> Result<()> {
     attr.parse_nested_meta(|meta| {
         // default or default = "function_name"
         if meta.path.is_ident("default") {

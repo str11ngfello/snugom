@@ -14,7 +14,7 @@ use super::support;
 use crate::{SnugomClient, SnugomEntity, snugom_create, snugom_update};
 
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "notes")]
+#[snugom(schema = 1, collection = "notes")]
 struct Note {
     #[snugom(id)]
     id: String,
@@ -47,12 +47,17 @@ pub async fn run() -> Result<()> {
     // created_at is automatically set on creation
     let before_create = Utc::now();
 
-    let note_id = snugom_create!(client, Note {
-        title: "My First Note".to_string(),
-        content: "This is the content".to_string(),
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-    }).await?.id;
+    let note_id = snugom_create!(
+        client,
+        Note {
+            title: "My First Note".to_string(),
+            content: "This is the content".to_string(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    )
+    .await?
+    .id;
 
     let after_create = Utc::now();
 
@@ -75,21 +80,16 @@ pub async fn run() -> Result<()> {
     // updated_at is automatically updated on modification
     snugom_update!(client, Note(entity_id = &note_id) {
         content: "Updated content".to_string(),
-    }).await?;
+    })
+    .await?;
 
     let updated_note = notes.get_or_error(&note_id).await?;
 
     // created_at should remain unchanged
-    assert_eq!(
-        updated_note.created_at, initial_created_at,
-        "created_at should never change"
-    );
+    assert_eq!(updated_note.created_at, initial_created_at, "created_at should never change");
 
     // updated_at should be newer than initial
-    assert!(
-        updated_note.updated_at > initial_updated_at,
-        "updated_at should be updated"
-    );
+    assert!(updated_note.updated_at > initial_updated_at, "updated_at should be updated");
 
     // ============ Multiple Updates ============
     // Each update should refresh updated_at
@@ -99,7 +99,8 @@ pub async fn run() -> Result<()> {
 
     snugom_update!(client, Note(entity_id = &note_id) {
         title: "Updated Title".to_string(),
-    }).await?;
+    })
+    .await?;
 
     let twice_updated = notes.get_or_error(&note_id).await?;
 
@@ -107,10 +108,7 @@ pub async fn run() -> Result<()> {
         twice_updated.updated_at > before_second_update,
         "updated_at should change on each update"
     );
-    assert_eq!(
-        twice_updated.created_at, initial_created_at,
-        "created_at still unchanged"
-    );
+    assert_eq!(twice_updated.created_at, initial_created_at, "created_at still unchanged");
 
     // ============ Verify Final State ============
     assert_eq!(twice_updated.title, "Updated Title");

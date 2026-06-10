@@ -1,3 +1,5 @@
+mod common;
+
 use redis::aio::ConnectionManager;
 use serde::{Deserialize, Serialize};
 use snugom::{
@@ -9,7 +11,7 @@ use snugom::{
 use tokio::runtime::Runtime;
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "tl", collection = "org")]
+#[snugom(schema = 1, collection = "org")]
 struct Org {
     #[snugom(id)]
     id: String,
@@ -18,7 +20,7 @@ struct Org {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 2, service = "tl", collection = "users")]
+#[snugom(schema = 2, collection = "users")]
 struct UserDescriptor {
     #[snugom(id)]
     id: String,
@@ -29,7 +31,6 @@ struct UserDescriptor {
 #[test]
 fn descriptor_contains_relationships() {
     let descriptor = UserDescriptor::entity_descriptor();
-    assert_eq!(descriptor.service, "tl");
     assert_eq!(descriptor.collection, "users");
     assert_eq!(descriptor.version, 2);
     assert_eq!(descriptor.id_field.as_deref(), Some("id"));
@@ -50,7 +51,7 @@ fn descriptor_contains_relationships() {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "tl", collection = "articles")]
+#[snugom(schema = 1, collection = "articles")]
 struct Article {
     #[snugom(id)]
     id: String,
@@ -111,12 +112,11 @@ fn validation_reports_issues() {
 }
 
 async fn redis_conn() -> ConnectionManager {
-    let client = redis::Client::open("redis://127.0.0.1/").expect("redis client");
-    client.get_connection_manager().await.expect("connection manager")
+    common::redis_conn().await
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "cycle", collection = "alpha")]
+#[snugom(schema = 1, collection = "alpha")]
 struct AlphaEntity {
     #[snugom(id)]
     id: String,
@@ -125,7 +125,7 @@ struct AlphaEntity {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "cycle", collection = "beta")]
+#[snugom(schema = 1, collection = "beta")]
 struct BetaEntity {
     #[snugom(id)]
     id: String,
@@ -146,7 +146,9 @@ fn cascade_cycle_is_rejected() {
             .await
             .expect_err("expected cascade cycle error");
         match err {
-            snugom::RepoError::Other { message } => {
+            snugom::RepoError::Other {
+                message,
+            } => {
                 assert!(message.contains("cycle detected"), "Got message: {}", message);
             }
             other => panic!("expected cycle error, got {other:?}"),
@@ -155,7 +157,7 @@ fn cascade_cycle_is_rejected() {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "depth", collection = "node0")]
+#[snugom(schema = 1, collection = "node0")]
 struct DepthNode0 {
     #[snugom(id)]
     id: String,
@@ -164,7 +166,7 @@ struct DepthNode0 {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "depth", collection = "node1")]
+#[snugom(schema = 1, collection = "node1")]
 struct DepthNode1 {
     #[snugom(id)]
     id: String,
@@ -173,7 +175,7 @@ struct DepthNode1 {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "depth", collection = "node2")]
+#[snugom(schema = 1, collection = "node2")]
 struct DepthNode2 {
     #[snugom(id)]
     id: String,
@@ -182,7 +184,7 @@ struct DepthNode2 {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "depth", collection = "node3")]
+#[snugom(schema = 1, collection = "node3")]
 struct DepthNode3 {
     #[snugom(id)]
     id: String,
@@ -191,7 +193,7 @@ struct DepthNode3 {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "depth", collection = "node4")]
+#[snugom(schema = 1, collection = "node4")]
 struct DepthNode4 {
     #[snugom(id)]
     id: String,
@@ -200,7 +202,7 @@ struct DepthNode4 {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "depth", collection = "node5")]
+#[snugom(schema = 1, collection = "node5")]
 struct DepthNode5 {
     #[snugom(id)]
     id: String,
@@ -209,7 +211,7 @@ struct DepthNode5 {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "depth", collection = "node6")]
+#[snugom(schema = 1, collection = "node6")]
 struct DepthNode6 {
     #[snugom(id)]
     id: String,
@@ -218,7 +220,7 @@ struct DepthNode6 {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "depth", collection = "node7")]
+#[snugom(schema = 1, collection = "node7")]
 struct DepthNode7 {
     #[snugom(id)]
     id: String,
@@ -227,7 +229,7 @@ struct DepthNode7 {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "depth", collection = "node8")]
+#[snugom(schema = 1, collection = "node8")]
 struct DepthNode8 {
     #[snugom(id)]
     id: String,
@@ -236,7 +238,7 @@ struct DepthNode8 {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "depth", collection = "node9")]
+#[snugom(schema = 1, collection = "node9")]
 struct DepthNode9 {
     #[snugom(id)]
     id: String,
@@ -274,7 +276,9 @@ fn cascade_depth_limit_is_enforced() {
             .await
             .expect_err("expected cascade depth error");
         match err {
-            snugom::RepoError::Other { message } => {
+            snugom::RepoError::Other {
+                message,
+            } => {
                 assert!(message.contains("cascade depth exceeded"), "Got message: {}", message);
             }
             other => panic!("expected depth error, got {other:?}"),

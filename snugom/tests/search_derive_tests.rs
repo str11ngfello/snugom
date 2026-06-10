@@ -12,18 +12,20 @@
 //! - Combined scenarios (entries 57-65)
 //! - Error cases (entries 66-70) - tested via trybuild
 
+mod common;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use snugom::search::{IndexFieldType, SearchEntity, SortOrder};
 use snugom::SnugomEntity;
+use snugom::search::{IndexFieldType, SearchEntity, SortOrder};
 
 // =============================================================================
 // Test Entities - Numeric Fields (Entries 1-15)
 // =============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(schema = 1, service = "test", collection = "numeric_items")]
+#[snugom(schema = 1, collection = "numeric_items")]
 pub struct NumericEntity {
     #[snugom(id)]
     pub id: String,
@@ -58,7 +60,7 @@ pub struct NumericEntity {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(schema = 1, service = "test", collection = "optional_numeric_items")]
+#[snugom(schema = 1, collection = "optional_numeric_items")]
 pub struct OptionalNumericEntity {
     #[snugom(id)]
     pub id: String,
@@ -85,7 +87,7 @@ pub struct OptionalNumericEntity {
 // =============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(schema = 1, service = "test", collection = "boolean_items")]
+#[snugom(schema = 1, collection = "boolean_items")]
 pub struct BooleanEntity {
     #[snugom(id)]
     pub id: String,
@@ -131,7 +133,7 @@ pub enum Priority {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(schema = 1, service = "test", collection = "enum_items")]
+#[snugom(schema = 1, collection = "enum_items")]
 pub struct EnumEntity {
     #[snugom(id)]
     pub id: String,
@@ -162,7 +164,7 @@ pub struct EnumEntity {
 // =============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(schema = 1, service = "test", collection = "text_search_items")]
+#[snugom(schema = 1, collection = "text_search_items")]
 pub struct TextSearchEntity {
     #[snugom(id)]
     pub id: String,
@@ -193,7 +195,7 @@ pub struct TextSearchEntity {
 // =============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(schema = 1, service = "test", collection = "tag_string_items")]
+#[snugom(schema = 1, collection = "tag_string_items")]
 pub struct TagStringEntity {
     #[snugom(id)]
     pub id: String,
@@ -224,7 +226,7 @@ pub struct TagStringEntity {
 // =============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(schema = 1, service = "test", collection = "datetime_items", default_sort = "-created_at")]
+#[snugom(schema = 1, collection = "datetime_items", default_sort = "-created_at")]
 pub struct DateTimeEntity {
     #[snugom(id)]
     pub id: String,
@@ -271,7 +273,7 @@ pub struct DateTimeEntity {
 // =============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(schema = 1, service = "test", collection = "array_items")]
+#[snugom(schema = 1, collection = "array_items")]
 pub struct ArrayEntity {
     #[snugom(id)]
     pub id: String,
@@ -294,7 +296,7 @@ pub struct ArrayEntity {
 // =============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(schema = 1, service = "test", collection = "geo_items")]
+#[snugom(schema = 1, collection = "geo_items")]
 pub struct GeoEntity {
     #[snugom(id)]
     pub id: String,
@@ -317,7 +319,7 @@ pub struct GeoEntity {
 // =============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(schema = 1, service = "test", collection = "combined_items", default_sort = "-created_at")]
+#[snugom(schema = 1, collection = "combined_items", default_sort = "-created_at")]
 pub struct CombinedEntity {
     #[snugom(id)]
     pub id: String,
@@ -347,7 +349,7 @@ pub struct CombinedEntity {
 
 /// Entity for testing ascending default sort (Entry 59)
 #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-#[snugom(schema = 1, service = "test", collection = "asc_sort_items", default_sort = "name")]
+#[snugom(schema = 1, collection = "asc_sort_items", default_sort = "name")]
 pub struct AscendingSortEntity {
     #[snugom(id)]
     pub id: String,
@@ -355,7 +357,6 @@ pub struct AscendingSortEntity {
     #[snugom(searchable, sortable)]
     pub name: String,
 }
-
 
 // =============================================================================
 // UNIT TESTS - Numeric Fields
@@ -678,7 +679,10 @@ mod text_string_tests {
 
         // But it should NOT be in text_search_fields (not searchable, just indexed)
         let text_fields = TextSearchEntity::text_search_fields();
-        assert!(!text_fields.contains(&"internal_text"), "internal_text should NOT be in text_search_fields");
+        assert!(
+            !text_fields.contains(&"internal_text"),
+            "internal_text should NOT be in text_search_fields"
+        );
     }
 }
 
@@ -967,7 +971,10 @@ mod combined_tests {
     fn test_multiple_searchable_fields_in_text_search() {
         let text_fields = CombinedEntity::text_search_fields();
         assert!(text_fields.contains(&"name"), "name should be in text_search_fields");
-        assert!(text_fields.contains(&"description"), "description should be in text_search_fields");
+        assert!(
+            text_fields.contains(&"description"),
+            "description should be in text_search_fields"
+        );
         assert_eq!(text_fields.len(), 2, "should have exactly 2 text search fields");
     }
 
@@ -1010,13 +1017,13 @@ mod combined_tests {
     #[test]
     fn test_index_name_includes_collection() {
         let def = CombinedEntity::index_definition("myprefix");
-        assert_eq!(def.name, "myprefix:test:combined_items:idx");
+        assert_eq!(def.name, "myprefix:combined_items:idx");
     }
 
     #[test]
     fn test_index_prefix_format() {
         let def = CombinedEntity::index_definition("myprefix");
-        assert_eq!(def.prefixes[0], "myprefix:test:combined_items:");
+        assert_eq!(def.prefixes[0], "myprefix:combined_items:");
     }
 
     #[test]
@@ -1057,7 +1064,9 @@ mod error_tests {
 
         let err = result.unwrap_err();
         match err {
-            snugom::errors::RepoError::InvalidRequest { message } => {
+            snugom::errors::RepoError::InvalidRequest {
+                message,
+            } => {
                 assert!(message.contains("Unknown filter field"), "error should mention unknown field");
             }
             _ => panic!("expected InvalidRequest error"),
@@ -1078,36 +1087,29 @@ mod integration_tests {
     use snugom::search::{SearchEntity, SearchQuery};
 
     async fn get_redis_connection() -> ConnectionManager {
-        let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".to_string());
-        let client = redis::Client::open(redis_url).expect("Failed to create Redis client");
-        ConnectionManager::new(client).await.expect("Failed to connect to Redis")
+        super::common::redis_conn().await
     }
 
-    async fn cleanup_keys(conn: &mut ConnectionManager, pattern: &str) {
-        let keys: Vec<String> = redis::cmd("KEYS")
-            .arg(pattern)
-            .query_async(conn)
-            .await
-            .unwrap_or_default();
+    async fn cleanup_keys(
+        conn: &mut ConnectionManager,
+        pattern: &str,
+    ) {
+        let keys: Vec<String> = redis::cmd("KEYS").arg(pattern).query_async(conn).await.unwrap_or_default();
         if !keys.is_empty() {
-            let _: () = redis::cmd("DEL")
-                .arg(&keys)
-                .query_async(conn)
-                .await
-                .unwrap_or(());
+            let _: () = redis::cmd("DEL").arg(&keys).query_async(conn).await.unwrap_or(());
         }
     }
 
-    async fn drop_index_if_exists(conn: &mut ConnectionManager, index_name: &str) {
-        let _: Result<(), redis::RedisError> = redis::cmd("FT.DROPINDEX")
-            .arg(index_name)
-            .query_async(conn)
-            .await;
+    async fn drop_index_if_exists(
+        conn: &mut ConnectionManager,
+        index_name: &str,
+    ) {
+        let _: Result<(), redis::RedisError> = redis::cmd("FT.DROPINDEX").arg(index_name).query_async(conn).await;
     }
 
     /// Simple entity for integration testing
     #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-    #[snugom(schema = 1, service = "itest", collection = "items", default_sort = "-score")]
+    #[snugom(schema = 1, collection = "items", default_sort = "-score")]
     pub struct IntegrationTestEntity {
         #[snugom(id)]
         pub id: String,
@@ -1135,8 +1137,8 @@ mod integration_tests {
         let prefix = "search_test";
 
         // Cleanup
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
 
         let repo: Repo<IntegrationTestEntity> = Repo::new(prefix.to_string());
 
@@ -1154,9 +1156,7 @@ mod integration_tests {
                 .active(true)
                 .created_at(now);
 
-            repo.create_with_conn(&mut conn, builder)
-                .await
-                .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder).await.expect("create should succeed");
         }
 
         // Give Redis time to index
@@ -1187,8 +1187,8 @@ mod integration_tests {
         assert_eq!(result.items.len(), 3, "should find 3 items with score 20-40");
 
         // Cleanup
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
     }
 
     #[tokio::test]
@@ -1198,8 +1198,8 @@ mod integration_tests {
         let prefix = "search_test2";
 
         // Cleanup
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
 
         let repo: Repo<IntegrationTestEntity> = Repo::new(prefix.to_string());
         repo.ensure_search_index(&mut conn).await.expect("Failed to create index");
@@ -1207,19 +1207,24 @@ mod integration_tests {
         let now = chrono::Utc::now();
 
         // Create entities with different categories
-        for (i, cat) in [(1, "alpha"), (2, "beta"), (3, "alpha"), (4, "gamma"), (5, "alpha")].iter() {
+        for (i, cat) in [
+            (1, "alpha"),
+            (2, "beta"),
+            (3, "alpha"),
+            (4, "gamma"),
+            (5, "alpha"),
+        ]
+        .iter()
+        {
             let builder = IntegrationTestEntity::validation_builder()
                 .id(format!("item-{i}"))
                 .name(format!("Item {i}"))
                 .score(*i * 10)
                 .category(cat.to_string())
                 .active(true)
-                .created_at(now)
-                ;
+                .created_at(now);
 
-            repo.create_with_conn(&mut conn, builder)
-                .await
-                .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder).await.expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1248,8 +1253,8 @@ mod integration_tests {
         assert_eq!(result.items.len(), 3, "should find 3 items with category=alpha");
 
         // Cleanup
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
     }
 
     #[tokio::test]
@@ -1258,8 +1263,8 @@ mod integration_tests {
         let mut conn = get_redis_connection().await;
         let prefix = "search_test3";
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
 
         let repo: Repo<IntegrationTestEntity> = Repo::new(prefix.to_string());
         repo.ensure_search_index(&mut conn).await.expect("Failed to create index");
@@ -1267,19 +1272,23 @@ mod integration_tests {
         let now = chrono::Utc::now();
 
         // Create entities with different names
-        for (i, name) in [(1, "Dragon Slayer"), (2, "Knight Commander"), (3, "Dragon Knight"), (4, "Mage")].iter() {
+        for (i, name) in [
+            (1, "Dragon Slayer"),
+            (2, "Knight Commander"),
+            (3, "Dragon Knight"),
+            (4, "Mage"),
+        ]
+        .iter()
+        {
             let builder = IntegrationTestEntity::validation_builder()
                 .id(format!("item-{i}"))
                 .name(name.to_string())
                 .score(*i * 10)
                 .category("hero".to_string())
                 .active(true)
-                .created_at(now)
-                ;
+                .created_at(now);
 
-            repo.create_with_conn(&mut conn, builder)
-                .await
-                .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder).await.expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1307,8 +1316,8 @@ mod integration_tests {
 
         assert_eq!(result.items.len(), 2, "should find 2 items with 'dragon' in name");
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
     }
 
     #[tokio::test]
@@ -1317,8 +1326,8 @@ mod integration_tests {
         let mut conn = get_redis_connection().await;
         let prefix = "search_test4";
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
 
         let repo: Repo<IntegrationTestEntity> = Repo::new(prefix.to_string());
         repo.ensure_search_index(&mut conn).await.expect("Failed to create index");
@@ -1333,12 +1342,9 @@ mod integration_tests {
                 .score(*i * 10)
                 .category("test".to_string())
                 .active(true)
-                .created_at(now)
-                ;
+                .created_at(now);
 
-            repo.create_with_conn(&mut conn, builder)
-                .await
-                .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder).await.expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1370,8 +1376,8 @@ mod integration_tests {
         let scores: Vec<u32> = result.items.iter().map(|i| i.score).collect();
         assert_eq!(scores, vec![10, 20, 30, 40, 50], "should be sorted ascending");
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
     }
 
     #[tokio::test]
@@ -1380,8 +1386,8 @@ mod integration_tests {
         let mut conn = get_redis_connection().await;
         let prefix = "search_test5";
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
 
         let repo: Repo<IntegrationTestEntity> = Repo::new(prefix.to_string());
         repo.ensure_search_index(&mut conn).await.expect("Failed to create index");
@@ -1396,12 +1402,9 @@ mod integration_tests {
                 .score(*i * 10)
                 .category("test".to_string())
                 .active(*active)
-                .created_at(now)
-                ;
+                .created_at(now);
 
-            repo.create_with_conn(&mut conn, builder)
-                .await
-                .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder).await.expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1429,8 +1432,8 @@ mod integration_tests {
 
         assert_eq!(result.items.len(), 3, "should find 3 active items");
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
     }
 
     #[tokio::test]
@@ -1439,8 +1442,8 @@ mod integration_tests {
         let mut conn = get_redis_connection().await;
         let prefix = "search_test6";
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
 
         let repo: Repo<IntegrationTestEntity> = Repo::new(prefix.to_string());
         repo.ensure_search_index(&mut conn).await.expect("Failed to create index");
@@ -1463,12 +1466,9 @@ mod integration_tests {
                 .score(*score)
                 .category(cat.to_string())
                 .active(*active)
-                .created_at(now)
-                ;
+                .created_at(now);
 
-            repo.create_with_conn(&mut conn, builder)
-                .await
-                .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder).await.expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1497,8 +1497,8 @@ mod integration_tests {
         // Should find items 1 (Alpha) and 4 (Delta) - both cat1 and active
         assert_eq!(result.items.len(), 2, "should find 2 items matching both filters");
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
     }
 
     #[tokio::test]
@@ -1507,8 +1507,8 @@ mod integration_tests {
         let mut conn = get_redis_connection().await;
         let prefix = "search_test7";
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
 
         let repo: Repo<IntegrationTestEntity> = Repo::new(prefix.to_string());
         repo.ensure_search_index(&mut conn).await.expect("Failed to create index");
@@ -1523,12 +1523,9 @@ mod integration_tests {
                 .score(i * 10)
                 .category("test".to_string())
                 .active(true)
-                .created_at(now)
-                ;
+                .created_at(now);
 
-            repo.create_with_conn(&mut conn, builder)
-                .await
-                .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder).await.expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1582,8 +1579,8 @@ mod integration_tests {
         assert_eq!(result2.items.len(), 3, "page 2 should have 3 items");
         assert_eq!(result2.items[0].score, 40, "first item on page 2 should have score 40");
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
     }
 
     // =========================================================================
@@ -1598,8 +1595,8 @@ mod integration_tests {
         let mut conn = get_redis_connection().await;
         let prefix = "or_test1";
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
 
         let repo: Repo<IntegrationTestEntity> = Repo::new(prefix.to_string());
         repo.ensure_search_index(&mut conn).await.expect("Failed to create index");
@@ -1627,12 +1624,9 @@ mod integration_tests {
                 .score(*i * 10)
                 .category(cat.to_string())
                 .active(true)
-                .created_at(now)
-                ;
+                .created_at(now);
 
-            repo.create_with_conn(&mut conn, builder)
-                .await
-                .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder).await.expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1643,12 +1637,10 @@ mod integration_tests {
             FilterCondition::tag_eq("category", "beta"),
         ]);
 
-        let params = SearchParams::new()
-            .with_condition(or_condition)
-            .with_sort(Some(SearchSort {
-                field: "score".to_string(),
-                order: SortOrder::Asc,
-            }));
+        let params = SearchParams::new().with_condition(or_condition).with_sort(Some(SearchSort {
+            field: "score".to_string(),
+            order: SortOrder::Asc,
+        }));
 
         let result = repo.search(&mut conn, params).await.expect("search should succeed");
 
@@ -1658,16 +1650,19 @@ mod integration_tests {
 
         // Verify the correct items were returned
         let categories: Vec<&str> = result.items.iter().map(|i| i.category.as_str()).collect();
-        assert!(categories.iter().all(|c| *c == "alpha" || *c == "beta"),
-            "all returned items should be alpha or beta, got: {:?}", categories);
+        assert!(
+            categories.iter().all(|c| *c == "alpha" || *c == "beta"),
+            "all returned items should be alpha or beta, got: {:?}",
+            categories
+        );
 
         // Verify gamma items were NOT returned
         let ids: Vec<&str> = result.items.iter().map(|i| i.id.as_str()).collect();
         assert!(!ids.contains(&"item-6"), "gamma item-6 should NOT be returned");
         assert!(!ids.contains(&"item-7"), "gamma item-7 should NOT be returned");
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
     }
 
     #[tokio::test]
@@ -1678,8 +1673,8 @@ mod integration_tests {
         let mut conn = get_redis_connection().await;
         let prefix = "or_test2";
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
 
         let repo: Repo<IntegrationTestEntity> = Repo::new(prefix.to_string());
         repo.ensure_search_index(&mut conn).await.expect("Failed to create index");
@@ -1705,12 +1700,9 @@ mod integration_tests {
                 .score(*i * 10)
                 .category(cat.to_string())
                 .active(*active)
-                .created_at(now)
-                ;
+                .created_at(now);
 
-            repo.create_with_conn(&mut conn, builder)
-                .await
-                .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder).await.expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1721,12 +1713,10 @@ mod integration_tests {
             FilterCondition::tag_eq("category", "special"),
         ]);
 
-        let params = SearchParams::new()
-            .with_condition(or_condition)
-            .with_sort(Some(SearchSort {
-                field: "score".to_string(),
-                order: SortOrder::Asc,
-            }));
+        let params = SearchParams::new().with_condition(or_condition).with_sort(Some(SearchSort {
+            field: "score".to_string(),
+            order: SortOrder::Asc,
+        }));
 
         let result = repo.search(&mut conn, params).await.expect("search should succeed");
 
@@ -1739,8 +1729,8 @@ mod integration_tests {
         assert!(ids.contains(&"item-3"), "item-3 (both) should be returned");
         assert!(!ids.contains(&"item-4"), "item-4 (neither) should NOT be returned");
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
     }
 
     // =========================================================================
@@ -1755,8 +1745,8 @@ mod integration_tests {
         let mut conn = get_redis_connection().await;
         let prefix = "and_test1";
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
 
         let repo: Repo<IntegrationTestEntity> = Repo::new(prefix.to_string());
         repo.ensure_search_index(&mut conn).await.expect("Failed to create index");
@@ -1784,12 +1774,9 @@ mod integration_tests {
                 .score(*i * 10)
                 .category(cat.to_string())
                 .active(*active)
-                .created_at(now)
-                ;
+                .created_at(now);
 
-            repo.create_with_conn(&mut conn, builder)
-                .await
-                .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder).await.expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1800,12 +1787,10 @@ mod integration_tests {
             FilterCondition::tag_eq("category", "target"),
         ]);
 
-        let params = SearchParams::new()
-            .with_condition(and_condition)
-            .with_sort(Some(SearchSort {
-                field: "score".to_string(),
-                order: SortOrder::Asc,
-            }));
+        let params = SearchParams::new().with_condition(and_condition).with_sort(Some(SearchSort {
+            field: "score".to_string(),
+            order: SortOrder::Asc,
+        }));
 
         let result = repo.search(&mut conn, params).await.expect("search should succeed");
 
@@ -1819,8 +1804,8 @@ mod integration_tests {
         assert!(!ids.contains(&"item-4"), "item-4 (only active) should NOT be returned");
         assert!(!ids.contains(&"item-5"), "item-5 (neither) should NOT be returned");
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
     }
 
     #[tokio::test]
@@ -1831,8 +1816,8 @@ mod integration_tests {
         let mut conn = get_redis_connection().await;
         let prefix = "and_test2";
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
 
         let repo: Repo<IntegrationTestEntity> = Repo::new(prefix.to_string());
         repo.ensure_search_index(&mut conn).await.expect("Failed to create index");
@@ -1858,12 +1843,9 @@ mod integration_tests {
                 .score(*score)
                 .category(cat.to_string())
                 .active(true)
-                .created_at(now)
-                ;
+                .created_at(now);
 
-            repo.create_with_conn(&mut conn, builder)
-                .await
-                .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder).await.expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1878,12 +1860,10 @@ mod integration_tests {
             },
         ]);
 
-        let params = SearchParams::new()
-            .with_condition(and_condition)
-            .with_sort(Some(SearchSort {
-                field: "score".to_string(),
-                order: SortOrder::Asc,
-            }));
+        let params = SearchParams::new().with_condition(and_condition).with_sort(Some(SearchSort {
+            field: "score".to_string(),
+            order: SortOrder::Asc,
+        }));
 
         let result = repo.search(&mut conn, params).await.expect("search should succeed");
 
@@ -1901,8 +1881,8 @@ mod integration_tests {
         assert!(!ids.contains(&"item-6"), "item-6 (wrong category) should NOT be returned");
         assert!(!ids.contains(&"item-7"), "item-7 (wrong category) should NOT be returned");
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
     }
 
     // =========================================================================
@@ -1917,8 +1897,8 @@ mod integration_tests {
         let mut conn = get_redis_connection().await;
         let prefix = "nested_test1";
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
 
         let repo: Repo<IntegrationTestEntity> = Repo::new(prefix.to_string());
         repo.ensure_search_index(&mut conn).await.expect("Failed to create index");
@@ -1946,12 +1926,9 @@ mod integration_tests {
                 .score(*i * 10)
                 .category(cat.to_string())
                 .active(*active)
-                .created_at(now)
-                ;
+                .created_at(now);
 
-            repo.create_with_conn(&mut conn, builder)
-                .await
-                .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder).await.expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -1965,12 +1942,10 @@ mod integration_tests {
             ]),
         ]);
 
-        let params = SearchParams::new()
-            .with_condition(condition)
-            .with_sort(Some(SearchSort {
-                field: "score".to_string(),
-                order: SortOrder::Asc,
-            }));
+        let params = SearchParams::new().with_condition(condition).with_sort(Some(SearchSort {
+            field: "score".to_string(),
+            order: SortOrder::Asc,
+        }));
 
         let result = repo.search(&mut conn, params).await.expect("search should succeed");
 
@@ -1984,8 +1959,8 @@ mod integration_tests {
         assert!(!ids.contains(&"item-4"), "item-4 (not active) should NOT be returned");
         assert!(!ids.contains(&"item-5"), "item-5 should NOT be returned");
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
     }
 
     #[tokio::test]
@@ -1996,8 +1971,8 @@ mod integration_tests {
         let mut conn = get_redis_connection().await;
         let prefix = "nested_test2";
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
 
         let repo: Repo<IntegrationTestEntity> = Repo::new(prefix.to_string());
         repo.ensure_search_index(&mut conn).await.expect("Failed to create index");
@@ -2025,12 +2000,9 @@ mod integration_tests {
                 .score(*score)
                 .category(cat.to_string())
                 .active(*active)
-                .created_at(now)
-                ;
+                .created_at(now);
 
-            repo.create_with_conn(&mut conn, builder)
-                .await
-                .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder).await.expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -2048,12 +2020,10 @@ mod integration_tests {
             },
         ]);
 
-        let params = SearchParams::new()
-            .with_condition(condition)
-            .with_sort(Some(SearchSort {
-                field: "score".to_string(),
-                order: SortOrder::Asc,
-            }));
+        let params = SearchParams::new().with_condition(condition).with_sort(Some(SearchSort {
+            field: "score".to_string(),
+            order: SortOrder::Asc,
+        }));
 
         let result = repo.search(&mut conn, params).await.expect("search should succeed");
 
@@ -2067,8 +2037,8 @@ mod integration_tests {
         assert!(!ids.contains(&"item-2"), "item-2 should NOT be returned");
         assert!(!ids.contains(&"item-3"), "item-3 should NOT be returned");
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:items:idx")).await;
     }
 
     // =========================================================================
@@ -2077,7 +2047,7 @@ mod integration_tests {
 
     /// Entity with private/owner fields like KV store
     #[derive(Debug, Clone, Serialize, Deserialize, SnugomEntity)]
-    #[snugom(schema = 1, service = "itest", collection = "visibility_items")]
+    #[snugom(schema = 1, collection = "visibility_items")]
     pub struct VisibilityTestEntity {
         #[snugom(id)]
         pub id: String,
@@ -2103,8 +2073,8 @@ mod integration_tests {
         let mut conn = get_redis_connection().await;
         let prefix = "visibility_test";
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:visibility_items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:visibility_items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:visibility_items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:visibility_items:idx")).await;
 
         let repo: Repo<VisibilityTestEntity> = Repo::new(prefix.to_string());
         repo.ensure_search_index(&mut conn).await.expect("Failed to create index");
@@ -2135,9 +2105,7 @@ mod integration_tests {
                 .owner(owner.to_string())
                 .created_at(now);
 
-            repo.create_with_conn(&mut conn, builder)
-                .await
-                .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder).await.expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -2176,10 +2144,13 @@ mod integration_tests {
         assert!(bob_ids.contains(&"item-1"), "item-1 should be visible to bob");
         assert!(bob_ids.contains(&"item-2"), "item-2 should be visible to bob");
         assert!(bob_ids.contains(&"item-4"), "item-4 (bob's private) should be visible to bob");
-        assert!(!bob_ids.contains(&"item-3"), "item-3 (alice's private) should NOT be visible to bob");
+        assert!(
+            !bob_ids.contains(&"item-3"),
+            "item-3 (alice's private) should NOT be visible to bob"
+        );
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:visibility_items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:visibility_items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:visibility_items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:visibility_items:idx")).await;
     }
 
     #[tokio::test]
@@ -2190,8 +2161,8 @@ mod integration_tests {
         let mut conn = get_redis_connection().await;
         let prefix = "visibility_test2";
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:visibility_items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:visibility_items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:visibility_items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:visibility_items:idx")).await;
 
         let repo: Repo<VisibilityTestEntity> = Repo::new(prefix.to_string());
         repo.ensure_search_index(&mut conn).await.expect("Failed to create index");
@@ -2200,10 +2171,10 @@ mod integration_tests {
 
         // Create items with different names for text search
         let test_data = [
-            (1, "Config Database", false, "alice"),   // public, matches "config"
-            (2, "Config Cache", true, "alice"),       // alice's private, matches "config"
-            (3, "Settings File", false, "bob"),       // public, doesn't match "config"
-            (4, "Config Server", true, "bob"),        // bob's private, matches "config"
+            (1, "Config Database", false, "alice"), // public, matches "config"
+            (2, "Config Cache", true, "alice"),     // alice's private, matches "config"
+            (3, "Settings File", false, "bob"),     // public, doesn't match "config"
+            (4, "Config Server", true, "bob"),      // bob's private, matches "config"
         ];
 
         for (i, name, private, owner) in test_data.iter() {
@@ -2214,9 +2185,7 @@ mod integration_tests {
                 .owner(owner.to_string())
                 .created_at(now);
 
-            repo.create_with_conn(&mut conn, builder)
-                .await
-                .expect("create should succeed");
+            repo.create_with_conn(&mut conn, builder).await.expect("create should succeed");
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -2243,7 +2212,7 @@ mod integration_tests {
         assert!(!ids.contains(&"item-3"), "item-3 (no 'config') should NOT be found");
         assert!(!ids.contains(&"item-4"), "item-4 (bob's private) should NOT be found");
 
-        cleanup_keys(&mut conn, &format!("{prefix}:itest:visibility_items:*")).await;
-        drop_index_if_exists(&mut conn, &format!("{prefix}:itest:visibility_items:idx")).await;
+        cleanup_keys(&mut conn, &format!("{prefix}:visibility_items:*")).await;
+        drop_index_if_exists(&mut conn, &format!("{prefix}:visibility_items:idx")).await;
     }
 }

@@ -5,8 +5,8 @@
 use anyhow::Result;
 use chrono::Utc;
 
-use crate::{CollectionHandle, SortOrder};
 use super::super::models::{Post, User};
+use crate::{CollectionHandle, SortOrder};
 
 /// Create a new post.
 pub async fn create_post(
@@ -231,8 +231,7 @@ pub async fn run(
     println!("    Created private post");
 
     // Edit a post
-    let edited = edit_post(posts, &post1.id, &alice.id, "Hello world! Updated content.".to_string())
-        .await?;
+    let edited = edit_post(posts, &post1.id, &alice.id, "Hello world! Updated content.".to_string()).await?;
     println!("    Edited post: {}", &edited.content[..30.min(edited.content.len())]);
 
     // Get user's posts
@@ -266,11 +265,14 @@ pub async fn run(
     )
     .await?;
 
-    println!("    Total public posts: {}",
-        posts.count_where(crate::SearchQuery {
-            filter: vec!["visibility:eq:public".to_string()],
-            ..Default::default()
-        }).await?
+    println!(
+        "    Total public posts: {}",
+        posts
+            .count_where(crate::SearchQuery {
+                filter: vec!["visibility:eq:public".to_string()],
+                ..Default::default()
+            })
+            .await?
     );
 
     Ok(())

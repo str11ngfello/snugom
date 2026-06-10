@@ -11,10 +11,10 @@ use redis::aio::ConnectionManager;
 use serde::{Deserialize, Serialize};
 
 use super::support;
-use crate::{SnugomClient, SnugomEntity, snugom_create, snugom_update, SearchQuery};
+use crate::{SearchQuery, SnugomClient, SnugomEntity, snugom_create, snugom_update};
 
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "articles")]
+#[snugom(schema = 1, collection = "articles")]
 struct Article {
     #[snugom(id)]
     id: String,
@@ -47,39 +47,52 @@ pub async fn run() -> Result<()> {
     let mut articles = client.articles();
 
     // Create test articles using snugom_create! macro
-    let article1 = snugom_create!(client, Article {
-        title: "Getting Started".to_string(),
-        content: "Introduction to the system".to_string(),
-        status: "draft".to_string(),
-        views: 0,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-    }).await?;
+    let article1 = snugom_create!(
+        client,
+        Article {
+            title: "Getting Started".to_string(),
+            content: "Introduction to the system".to_string(),
+            status: "draft".to_string(),
+            views: 0,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    )
+    .await?;
 
-    let article2 = snugom_create!(client, Article {
-        title: "Advanced Topics".to_string(),
-        content: "Deep dive into features".to_string(),
-        status: "draft".to_string(),
-        views: 0,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-    }).await?;
+    let article2 = snugom_create!(
+        client,
+        Article {
+            title: "Advanced Topics".to_string(),
+            content: "Deep dive into features".to_string(),
+            status: "draft".to_string(),
+            views: 0,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    )
+    .await?;
 
-    let article3 = snugom_create!(client, Article {
-        title: "Best Practices".to_string(),
-        content: "Tips and tricks".to_string(),
-        status: "draft".to_string(),
-        views: 0,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-    }).await?;
+    let article3 = snugom_create!(
+        client,
+        Article {
+            title: "Best Practices".to_string(),
+            content: "Tips and tricks".to_string(),
+            status: "draft".to_string(),
+            views: 0,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    )
+    .await?;
 
     // ============ snugom_update! macro ============
     // Partial update using Prisma-style struct literal syntax
     snugom_update!(client, Article(entity_id = &article1.id) {
         status: "published".to_string(),
         views: 100,
-    }).await?;
+    })
+    .await?;
 
     let updated = articles.get_or_error(&article1.id).await?;
     assert_eq!(updated.status, "published");
@@ -89,7 +102,8 @@ pub async fn run() -> Result<()> {
     // ============ Another update ============
     snugom_update!(client, Article(entity_id = &article2.id) {
         status: "published".to_string(),
-    }).await?;
+    })
+    .await?;
 
     let updated_article = articles.get_or_error(&article2.id).await?;
     assert_eq!(updated_article.status, "published");
@@ -99,11 +113,7 @@ pub async fn run() -> Result<()> {
     // Update multiple specific entities by their IDs (collection-level API)
     let ids = [article2.id.as_str(), article3.id.as_str()];
     let updated_count = articles
-        .update_many_by_ids(&ids, |id| {
-            Article::patch_builder()
-                .entity_id(id)
-                .views(50)
-        })
+        .update_many_by_ids(&ids, |id| Article::patch_builder().entity_id(id).views(50))
         .await?;
 
     assert_eq!(updated_count, 2, "should update 2 articles");
@@ -122,9 +132,7 @@ pub async fn run() -> Result<()> {
     };
     let updated_count = articles
         .update_many(query, |id| {
-            Article::patch_builder()
-                .entity_id(id)
-                .status("archived".to_string())
+            Article::patch_builder().entity_id(id).status("archived".to_string())
         })
         .await?;
 

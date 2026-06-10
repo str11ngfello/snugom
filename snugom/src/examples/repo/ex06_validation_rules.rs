@@ -2,15 +2,15 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::errors::ValidationError;
 use super::support;
+use crate::errors::ValidationError;
 use crate::{
     SnugomEntity,
     types::{EntityMetadata, ValidationDescriptor, ValidationRule, ValidationScope},
 };
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "examples", collection = "articles")]
+#[snugom(schema = 1, collection = "articles")]
 struct Article {
     #[snugom(id)]
     id: String,
@@ -30,7 +30,7 @@ struct Article {
 }
 
 #[derive(SnugomEntity, Serialize, Deserialize)]
-#[snugom(schema = 1, service = "examples", collection = "advanced")]
+#[snugom(schema = 1, collection = "advanced")]
 struct AdvancedEntity {
     #[snugom(id)]
     id: String,

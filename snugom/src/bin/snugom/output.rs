@@ -43,7 +43,10 @@ impl Default for GlobalOptions {
 /// Trait for data that can be displayed as a table
 #[allow(dead_code)]
 pub trait TableDisplay {
-    fn to_table(&self, options: &GlobalOptions) -> Table;
+    fn to_table(
+        &self,
+        options: &GlobalOptions,
+    ) -> Table;
     fn to_compact(&self) -> String;
 }
 
@@ -54,12 +57,17 @@ pub struct OutputManager {
 
 impl OutputManager {
     pub fn new(options: GlobalOptions) -> Self {
-        Self { options }
+        Self {
+            options,
+        }
     }
 
     /// Display data according to the configured output format
     #[allow(dead_code)]
-    pub fn display<T>(&self, data: &T) -> Result<()>
+    pub fn display<T>(
+        &self,
+        data: &T,
+    ) -> Result<()>
     where
         T: Serialize + TableDisplay,
     {
@@ -84,46 +92,43 @@ impl OutputManager {
     }
 
     /// Display a success message with color and icon
-    pub fn success(&self, message: &str) {
+    pub fn success(
+        &self,
+        message: &str,
+    ) {
         if !self.options.quiet {
             let output = if self.options.no_color {
                 format!("{} {message}", ICONS.success)
             } else {
-                format!(
-                    "{} {}",
-                    ICONS.success.color(THEME.success),
-                    message.color(THEME.success)
-                )
+                format!("{} {}", ICONS.success.color(THEME.success), message.color(THEME.success))
             };
             println!("{output}");
         }
     }
 
     /// Display an error message with color and icon
-    pub fn error(&self, message: &str) {
+    pub fn error(
+        &self,
+        message: &str,
+    ) {
         let output = if self.options.no_color {
             format!("{} {message}", ICONS.error)
         } else {
-            format!(
-                "{} {}",
-                ICONS.error.color(THEME.error),
-                message.color(THEME.error)
-            )
+            format!("{} {}", ICONS.error.color(THEME.error), message.color(THEME.error))
         };
         eprintln!("{output}");
     }
 
     /// Display a warning message
-    pub fn warning(&self, message: &str) {
+    pub fn warning(
+        &self,
+        message: &str,
+    ) {
         if !self.options.quiet {
             let output = if self.options.no_color {
                 format!("{} {message}", ICONS.warning)
             } else {
-                format!(
-                    "{} {}",
-                    ICONS.warning.color(THEME.warning),
-                    message.color(THEME.warning)
-                )
+                format!("{} {}", ICONS.warning.color(THEME.warning), message.color(THEME.warning))
             };
             println!("{output}");
         }
@@ -131,39 +136,40 @@ impl OutputManager {
 
     /// Display verbose information (only if verbose mode is enabled)
     #[allow(dead_code)]
-    pub fn verbose(&self, message: &str) {
+    pub fn verbose(
+        &self,
+        message: &str,
+    ) {
         if self.options.verbose && !self.options.quiet {
             let output = if self.options.no_color {
                 format!("{} {message}", ICONS.arrow)
             } else {
-                format!(
-                    "{} {}",
-                    ICONS.arrow.color(THEME.muted),
-                    message.color(THEME.muted)
-                )
+                format!("{} {}", ICONS.arrow.color(THEME.muted), message.color(THEME.muted))
             };
             eprintln!("{output}");
         }
     }
 
     /// Display info message with color and icon
-    pub fn info(&self, message: &str) {
+    pub fn info(
+        &self,
+        message: &str,
+    ) {
         if !self.options.quiet {
             let output = if self.options.no_color {
                 format!("{} {message}", ICONS.info)
             } else {
-                format!(
-                    "{} {}",
-                    ICONS.info.color(THEME.info),
-                    message.color(THEME.info)
-                )
+                format!("{} {}", ICONS.info.color(THEME.info), message.color(THEME.info))
             };
             println!("{output}");
         }
     }
 
     /// Display a heading
-    pub fn heading(&self, text: &str) {
+    pub fn heading(
+        &self,
+        text: &str,
+    ) {
         if !self.options.quiet {
             let output = if self.options.no_color {
                 format!("\n{text}\n{}", "=".repeat(text.len()))
@@ -176,7 +182,10 @@ impl OutputManager {
 
     /// Display a subheading
     #[allow(dead_code)]
-    pub fn subheading(&self, text: &str) {
+    pub fn subheading(
+        &self,
+        text: &str,
+    ) {
         if !self.options.quiet {
             let output = if self.options.no_color {
                 format!("\n{text}\n{}", "-".repeat(text.len()))
@@ -189,23 +198,26 @@ impl OutputManager {
 
     /// Display a key-value pair
     #[allow(dead_code)]
-    pub fn key_value(&self, key: &str, value: &str) {
+    pub fn key_value(
+        &self,
+        key: &str,
+        value: &str,
+    ) {
         if !self.options.quiet {
             let output = if self.options.no_color {
                 format!("{key}: {value}")
             } else {
-                format!(
-                    "{}: {}",
-                    key.color(THEME.key).bold(),
-                    value.color(THEME.value)
-                )
+                format!("{}: {}", key.color(THEME.key).bold(), value.color(THEME.value))
             };
             println!("{output}");
         }
     }
 
     /// Display a bullet list item
-    pub fn bullet(&self, text: &str) {
+    pub fn bullet(
+        &self,
+        text: &str,
+    ) {
         if !self.options.quiet {
             let output = if self.options.no_color {
                 format!("  {} {text}", ICONS.bullet)
@@ -217,7 +229,11 @@ impl OutputManager {
     }
 
     /// Display indented text with a prefix icon
-    pub fn indented(&self, icon: &str, text: &str) {
+    pub fn indented(
+        &self,
+        icon: &str,
+        text: &str,
+    ) {
         if !self.options.quiet {
             let output = if self.options.no_color {
                 format!("  {icon} {text}")
@@ -244,27 +260,27 @@ impl OutputManager {
 
     /// Add themed header to table
     #[allow(dead_code)]
-    pub fn add_table_header(&self, table: &mut Table, headers: Vec<&str>) {
+    pub fn add_table_header(
+        &self,
+        table: &mut Table,
+        headers: Vec<&str>,
+    ) {
         let header_cells: Vec<Cell> = if self.options.no_color {
-            headers
-                .iter()
-                .map(|h| Cell::new(h).add_attribute(Attribute::Bold))
-                .collect()
+            headers.iter().map(|h| Cell::new(h).add_attribute(Attribute::Bold)).collect()
         } else {
             headers
                 .iter()
-                .map(|h| {
-                    Cell::new(h)
-                        .add_attribute(Attribute::Bold)
-                        .fg(TableColor::Cyan)
-                })
+                .map(|h| Cell::new(h).add_attribute(Attribute::Bold).fg(TableColor::Cyan))
                 .collect()
         };
         table.set_header(header_cells);
     }
 
     /// Display progress indicator
-    pub fn progress(&self, message: &str) {
+    pub fn progress(
+        &self,
+        message: &str,
+    ) {
         if self.options.quiet || matches!(self.options.output_format, OutputFormat::Json) {
             return;
         }
@@ -300,7 +316,10 @@ impl<T> TableDisplay for Vec<T>
 where
     T: TableDisplay + Serialize,
 {
-    fn to_table(&self, options: &GlobalOptions) -> Table {
+    fn to_table(
+        &self,
+        options: &GlobalOptions,
+    ) -> Table {
         let mut table = Table::new();
 
         if !options.no_color {
@@ -340,7 +359,10 @@ mod tests {
     }
 
     impl TableDisplay for TestData {
-        fn to_table(&self, _options: &GlobalOptions) -> Table {
+        fn to_table(
+            &self,
+            _options: &GlobalOptions,
+        ) -> Table {
             let mut table = Table::new();
             table.add_row(vec![Cell::new("Name"), Cell::new(&self.name)]);
             table.add_row(vec![Cell::new("Value"), Cell::new(self.value.to_string())]);

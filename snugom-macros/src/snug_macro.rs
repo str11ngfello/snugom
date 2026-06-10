@@ -102,7 +102,10 @@ impl SnugInvocation {
         }
     }
 
-    fn parse_with_path(path: Path, input: ParseStream) -> Result<Self> {
+    fn parse_with_path(
+        path: Path,
+        input: ParseStream,
+    ) -> Result<Self> {
         let content;
         braced!(content in input);
         let entries = Self::parse_entries(&content)?;
@@ -138,7 +141,11 @@ impl Parse for SnugInvocation {
         let content;
         braced!(content in input);
         let entries = Self::parse_entries(&content)?;
-        Ok(Self { path, options, entries })
+        Ok(Self {
+            path,
+            options,
+            entries,
+        })
     }
 }
 
@@ -250,7 +257,11 @@ impl Parse for RelEntry {
             }))
         } else {
             let value: Expr = input.parse()?;
-            Ok(RelEntry::Field(FieldEntry { name, value, optional }))
+            Ok(RelEntry::Field(FieldEntry {
+                name,
+                value,
+                optional,
+            }))
         }
     }
 }

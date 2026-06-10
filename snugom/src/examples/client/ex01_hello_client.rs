@@ -13,7 +13,7 @@ use crate::{SnugomClient, SnugomEntity, snugom_create, snugom_delete, snugom_upd
 
 /// A simple task entity.
 #[derive(SnugomEntity, Serialize, Deserialize, Debug, Clone)]
-#[snugom(schema = 1, service = "examples", collection = "tasks")]
+#[snugom(schema = 1, collection = "tasks")]
 struct Task {
     #[snugom(id)]
     id: String,

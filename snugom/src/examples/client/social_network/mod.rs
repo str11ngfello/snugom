@@ -27,10 +27,10 @@
 //! }
 //! ```
 
-pub mod models;
 pub mod client;
-pub mod workflows;
+pub mod models;
 pub mod tour;
+pub mod workflows;
 
 pub use client::SocialNetworkClient;
 pub use models::*;

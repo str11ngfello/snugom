@@ -5,8 +5,8 @@
 use anyhow::Result;
 use chrono::Utc;
 
-use crate::{CollectionHandle, SortOrder};
 use super::super::models::{Comment, Like, Notification, Post, User};
+use crate::{CollectionHandle, SortOrder};
 
 /// Like a post.
 ///
@@ -35,11 +35,7 @@ pub async fn like_post(
     // Increment post's like count
     let post = posts.get_or_error(post_id).await?;
     posts
-        .update(
-            Post::patch_builder()
-                .entity_id(post_id)
-                .like_count(post.like_count + 1),
-        )
+        .update(Post::patch_builder().entity_id(post_id).like_count(post.like_count + 1))
         .await?;
 
     // Create notification for post author (if not self-like)
@@ -142,11 +138,7 @@ pub async fn add_comment(
     // Increment post's comment count
     let post = posts.get_or_error(post_id).await?;
     posts
-        .update(
-            Post::patch_builder()
-                .entity_id(post_id)
-                .comment_count(post.comment_count + 1),
-        )
+        .update(Post::patch_builder().entity_id(post_id).comment_count(post.comment_count + 1))
         .await?;
 
     // Create notification for post author
@@ -222,10 +214,7 @@ pub async fn get_unread_notifications(
 ) -> Result<Vec<Notification>> {
     let result = notifications
         .find_many(crate::SearchQuery {
-            filter: vec![
-                format!("user_id:eq:{user_id}"),
-                "read:eq:false".to_string(),
-            ],
+            filter: vec![format!("user_id:eq:{user_id}"), "read:eq:false".to_string()],
             page_size: Some(limit),
             sort_by: Some("created_at".to_string()),
             sort_order: Some(SortOrder::Desc),
@@ -243,9 +232,7 @@ pub async fn mark_notifications_read(
 ) -> Result<u64> {
     let id_refs: Vec<&str> = notification_ids.iter().map(|s| s.as_str()).collect();
     notifications
-        .update_many_by_ids(&id_refs, |id| {
-            Notification::patch_builder().entity_id(id).read(true)
-        })
+        .update_many_by_ids(&id_refs, |id| Notification::patch_builder().entity_id(id).read(true))
         .await
         .map_err(|e| e.into())
 }

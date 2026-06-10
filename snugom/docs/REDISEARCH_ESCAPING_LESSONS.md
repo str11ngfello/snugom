@@ -31,7 +31,7 @@ This dual role means you can't simply "escape everything" - you must understand 
 - **Use case**: Exact matching of enumerated values (status, visibility, tags)
 - **Index behavior**: Values are stored as-is, with optional separator for multi-value
 - **Query syntax**: `@field:{value}` or `@field:{val1|val2}` for OR
-- **Escaping needs**: Escape `\ { } [ ] : | " ' - . ` and spaces
+- **Escaping needs**: Escape `\ { } [ ] : | " ' - . +` and spaces
 
 ### TEXT Fields
 - **Use case**: Full-text search, partial matching, phrase search
@@ -96,13 +96,13 @@ This matches the tokenization that occurred at index time.
 
 | Function | Purpose | Characters Escaped | Use When |
 |----------|---------|-------------------|----------|
-| `escape_for_tag_query(value)` | TAG field values | `$ { } \ \| - .` | Exact tag matching |
+| `escape_for_tag_query(value)` | TAG field values | `$ { } \ \| - . + @` | Exact tag matching |
 | `escape_text_for_wildcard(value)` | TEXT wildcard queries | `\ ( ) \| ' " [ ] { } : @ ? ~ & ! . * %` | Contains, fuzzy queries |
 | `escape_text_for_phrase(value)` | TEXT phrase queries | `\ "` only | Value will be wrapped in quotes |
 | `escape_text_token(token)` | Individual token escaping | `\ ( ) \| ' " [ ] { } : @ ? ~ & ! .` | After manual tokenization |
 | `escape_text_search_term(token)` | Search term with wildcard | Calls `escape_text_token` + adds `*` | Free-text search terms |
 
-**Important Update (2025)**: TAG field escaping was updated based on testing. Required escaping: `$ { } \ | - .`. Note that `-` (hyphen) must be escaped because it acts as the NOT operator in RediSearch query syntax, and `.` (period) must be escaped because it acts as a JSON path separator. Spaces, colons, brackets, and quotes are allowed without escaping.
+**Important Update (2025)**: TAG field escaping was updated based on testing. Required escaping: `$ { } \ | - . + @`. Note that `-` (hyphen) must be escaped because it acts as the NOT operator in RediSearch query syntax, and `.` (period) must be escaped because it acts as a JSON path separator. Spaces, colons, brackets, and quotes are allowed without escaping.
 
 ### Critical Note: What's NOT Escaped
 
@@ -275,7 +275,7 @@ The escaping functions have been renamed for clarity:
 ```
 What type of field?
 ├── TAG → use escape_for_tag_query()
-│   (Escapes: $ { } \ | - .)
+│   (Escapes: $ { } \ | - . + @)
 ├── NUMERIC → no escaping needed
 ├── GEO → no escaping needed
 └── TEXT → What type of query?

@@ -6,17 +6,20 @@ use serde_json::Value;
 use crate::{
     errors::RepoError,
     runtime::{
-        commands::{MutationCommand, MutationPlan},
+        commands::{FindQuery, MutationCommand, MutationPlan},
         scripts::{
-            ENTITY_DELETE_SCRIPT, ENTITY_DELETE_SCRIPT_BODY, ENTITY_GET_OR_CREATE_SCRIPT,
-            ENTITY_GET_OR_CREATE_SCRIPT_BODY, ENTITY_MUTATION_SCRIPT, ENTITY_MUTATION_SCRIPT_BODY,
-            ENTITY_PATCH_SCRIPT, ENTITY_PATCH_SCRIPT_BODY, ENTITY_UPSERT_SCRIPT, ENTITY_UPSERT_SCRIPT_BODY,
-            RELATION_MUTATION_SCRIPT, RELATION_MUTATION_SCRIPT_BODY,
+            ENTITY_DELETE_SCRIPT, ENTITY_DELETE_SCRIPT_BODY, ENTITY_FIND_SCRIPT, ENTITY_FIND_SCRIPT_BODY,
+            ENTITY_GET_OR_CREATE_SCRIPT, ENTITY_GET_OR_CREATE_SCRIPT_BODY, ENTITY_MUTATION_SCRIPT,
+            ENTITY_MUTATION_SCRIPT_BODY, ENTITY_PATCH_SCRIPT, ENTITY_PATCH_SCRIPT_BODY, ENTITY_UPSERT_SCRIPT,
+            ENTITY_UPSERT_SCRIPT_BODY, RELATION_MUTATION_SCRIPT, RELATION_MUTATION_SCRIPT_BODY,
         },
     },
 };
 
-pub async fn execute_plan<C>(conn: &mut C, plan: &MutationPlan) -> Result<Vec<Value>, RepoError>
+pub async fn execute_plan<C>(
+    conn: &mut C,
+    plan: &MutationPlan,
+) -> Result<Vec<Value>, RepoError>
 where
     C: ConnectionLike + Send,
 {
@@ -51,21 +54,22 @@ where
                     "version_conflict" => {
                         let expected = value.get("expected").and_then(|v| v.as_u64());
                         let actual = value.get("actual").and_then(|v| v.as_u64());
-                        return Err(RepoError::VersionConflict { expected, actual });
+                        return Err(RepoError::VersionConflict {
+                            expected,
+                            actual,
+                        });
                     }
                     "entity_not_found" => {
                         let entity_id = value.get("entity_id").and_then(|v| v.as_str()).map(|s| s.to_string());
-                        return Err(RepoError::NotFound { entity_id });
+                        return Err(RepoError::NotFound {
+                            entity_id,
+                        });
                     }
                     "unique_constraint_violation" => {
                         let fields = value
                             .get("fields")
                             .and_then(|v| v.as_array())
-                            .map(|arr| {
-                                arr.iter()
-                                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                                    .collect()
-                            })
+                            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
                             .unwrap_or_default();
                         let values = value
                             .get("values")
@@ -110,7 +114,10 @@ where
 
 #[allow(async_fn_in_trait)]
 pub trait MutationExecutor {
-    async fn execute(&mut self, plan: MutationPlan) -> Result<Vec<Value>, RepoError>;
+    async fn execute(
+        &mut self,
+        plan: MutationPlan,
+    ) -> Result<Vec<Value>, RepoError>;
 }
 
 pub struct RedisExecutor<'a, C>
@@ -125,7 +132,9 @@ where
     C: ConnectionLike + Send,
 {
     pub fn new(connection: &'a mut C) -> Self {
-        Self { connection }
+        Self {
+            connection,
+        }
     }
 }
 
@@ -133,7 +142,65 @@ impl<'a, C> MutationExecutor for RedisExecutor<'a, C>
 where
     C: ConnectionLike + Send,
 {
-    async fn execute(&mut self, plan: MutationPlan) -> Result<Vec<Value>, RepoError> {
+    async fn execute(
+        &mut self,
+        plan: MutationPlan,
+    ) -> Result<Vec<Value>, RepoError> {
         execute_plan(self.connection, &plan).await
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Find executor — standalone, NOT part of MutationExecutor
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Execute an atomic find query via the entity_find Lua script.
+///
+/// Returns the parsed JSON response. Handles Lua-level errors
+/// (entity_not_found, invalid_payload) by mapping to `RepoError`.
+pub async fn execute_find<C>(
+    conn: &mut C,
+    query: &FindQuery,
+) -> Result<Value, RepoError>
+where
+    C: ConnectionLike + Send,
+{
+    let payload = serde_json::to_string(query).map_err(|err| RepoError::Other {
+        message: Cow::Owned(format!("failed to serialize find query: {err}")),
+    })?;
+
+    let mut invocation = ENTITY_FIND_SCRIPT.prepare_invoke();
+    invocation.arg(&payload);
+    invocation.arg(ENTITY_FIND_SCRIPT_BODY);
+    let raw: String = invocation.invoke_async(conn).await.map_err(RepoError::from)?;
+
+    let value: Value = serde_json::from_str(&raw).map_err(|err| RepoError::Other {
+        message: Cow::Owned(format!("failed to parse find lua response: {err}")),
+    })?;
+
+    if let Some(error) = value.get("error") {
+        if let Some(code) = error.as_str() {
+            match code {
+                "entity_not_found" => {
+                    return Err(RepoError::NotFound {
+                        entity_id: None,
+                    });
+                }
+                other => {
+                    let message = value
+                        .get("message")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(other);
+                    return Err(RepoError::Other {
+                        message: Cow::Owned(message.to_string()),
+                    });
+                }
+            }
+        }
+        return Err(RepoError::Other {
+            message: Cow::Owned("find lua error".to_string()),
+        });
+    }
+
+    Ok(value)
 }

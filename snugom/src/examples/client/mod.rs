@@ -29,18 +29,23 @@
 //! - ex17: Relation Mutations - connect/disconnect/delete with snugom_update!
 //! - ex18: Cascade Strategies - cascade delete behavior
 //!
-//! ## Advanced Patterns (19-23)
-//! - ex19: Multi-Entity Client - working with multiple entity types
-//! - ex20: Error Handling - handling various error conditions
-//! - ex21: Optimistic Locking - version-based conditional updates
-//! - ex22: Idempotency Keys - safe retry patterns
-//! - ex23: Batch Workflows - bulk operations for efficiency
+//! ## Find with Includes (19-21)
+//! - ex19: Find with Includes - snugom_find! for reading entities with related data
+//! - ex20: Find with Options - include options (limit, sort) and nested + options
+//! - ex21: Find Many with Includes - snugom_find_many! for list queries with related data
+//!
+//! ## Advanced Patterns (22-26)
+//! - ex22: Multi-Entity Client - working with multiple entity types
+//! - ex23: Error Handling - handling various error conditions
+//! - ex24: Optimistic Locking - version-based conditional updates
+//! - ex25: Idempotency Keys - safe retry patterns
+//! - ex26: Batch Workflows - bulk operations for efficiency
 //!
 //! ## Social Network Application
 //! - social_network: Complete multi-file example showing how to structure a real application
 
-pub mod support;
 pub mod social_network;
+pub mod support;
 
 pub mod ex01_hello_client;
 pub mod ex02_create_operations;
@@ -60,11 +65,14 @@ pub mod ex15_custom_ids;
 pub mod ex16_relations;
 pub mod ex17_relation_mutations;
 pub mod ex18_cascade_strategies;
-pub mod ex19_multi_entity_client;
-pub mod ex20_error_handling;
-pub mod ex21_optimistic_locking;
-pub mod ex22_idempotency_keys;
-pub mod ex23_batch_workflows;
+pub mod ex19_find_with_includes;
+pub mod ex20_find_with_options;
+pub mod ex21_find_many_with_includes;
+pub mod ex22_multi_entity_client;
+pub mod ex23_error_handling;
+pub mod ex24_optimistic_locking;
+pub mod ex25_idempotency_keys;
+pub mod ex26_batch_workflows;
 
 use anyhow::Result;
 
@@ -116,17 +124,25 @@ pub async fn run_all() -> Result<()> {
     println!("Running ex18_cascade_strategies...");
     ex18_cascade_strategies::run().await?;
 
+    println!("\n=== Find with Includes ===");
+    println!("Running ex19_find_with_includes...");
+    ex19_find_with_includes::run().await?;
+    println!("Running ex20_find_with_options...");
+    ex20_find_with_options::run().await?;
+    println!("Running ex21_find_many_with_includes...");
+    ex21_find_many_with_includes::run().await?;
+
     println!("\n=== Advanced Patterns ===");
-    println!("Running ex19_multi_entity_client...");
-    ex19_multi_entity_client::run().await?;
-    println!("Running ex20_error_handling...");
-    ex20_error_handling::run().await?;
-    println!("Running ex21_optimistic_locking...");
-    ex21_optimistic_locking::run().await?;
-    println!("Running ex22_idempotency_keys...");
-    ex22_idempotency_keys::run().await?;
-    println!("Running ex23_batch_workflows...");
-    ex23_batch_workflows::run().await?;
+    println!("Running ex22_multi_entity_client...");
+    ex22_multi_entity_client::run().await?;
+    println!("Running ex23_error_handling...");
+    ex23_error_handling::run().await?;
+    println!("Running ex24_optimistic_locking...");
+    ex24_optimistic_locking::run().await?;
+    println!("Running ex25_idempotency_keys...");
+    ex25_idempotency_keys::run().await?;
+    println!("Running ex26_batch_workflows...");
+    ex26_batch_workflows::run().await?;
 
     println!("\n=== Social Network Application ===");
     println!("Running social_network tour...");

@@ -190,7 +190,10 @@ impl FilterCondition {
 
     /// Create a TAG field equality filter for a single value.
     #[inline]
-    pub fn tag_eq(field: impl Into<String>, value: impl Into<String>) -> Self {
+    pub fn tag_eq(
+        field: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Self {
         Self::TagEquals {
             field: field.into(),
             values: vec![value.into()],
@@ -199,7 +202,10 @@ impl FilterCondition {
 
     /// Create a TAG field filter matching any of the given values (OR within field).
     #[inline]
-    pub fn tag_in<S: Into<String>>(field: impl Into<String>, values: impl IntoIterator<Item = S>) -> Self {
+    pub fn tag_in<S: Into<String>>(
+        field: impl Into<String>,
+        values: impl IntoIterator<Item = S>,
+    ) -> Self {
         Self::TagEquals {
             field: field.into(),
             values: values.into_iter().map(Into::into).collect(),
@@ -208,7 +214,10 @@ impl FilterCondition {
 
     /// Create a boolean field equality filter.
     #[inline]
-    pub fn bool_eq(field: impl Into<String>, value: bool) -> Self {
+    pub fn bool_eq(
+        field: impl Into<String>,
+        value: bool,
+    ) -> Self {
         Self::BooleanEquals {
             field: field.into(),
             value,
@@ -217,7 +226,11 @@ impl FilterCondition {
 
     /// Create a numeric range filter (inclusive bounds).
     #[inline]
-    pub fn numeric_range(field: impl Into<String>, min: Option<f64>, max: Option<f64>) -> Self {
+    pub fn numeric_range(
+        field: impl Into<String>,
+        min: Option<f64>,
+        max: Option<f64>,
+    ) -> Self {
         Self::NumericRange {
             field: field.into(),
             min,
@@ -227,7 +240,10 @@ impl FilterCondition {
 
     /// Create a numeric "greater than" filter.
     #[inline]
-    pub fn numeric_gt(field: impl Into<String>, min: f64) -> Self {
+    pub fn numeric_gt(
+        field: impl Into<String>,
+        min: f64,
+    ) -> Self {
         Self::NumericRange {
             field: field.into(),
             min: Some(min),
@@ -237,7 +253,10 @@ impl FilterCondition {
 
     /// Create a numeric "less than" filter.
     #[inline]
-    pub fn numeric_lt(field: impl Into<String>, max: f64) -> Self {
+    pub fn numeric_lt(
+        field: impl Into<String>,
+        max: f64,
+    ) -> Self {
         Self::NumericRange {
             field: field.into(),
             min: None,
@@ -247,7 +266,10 @@ impl FilterCondition {
 
     /// Create a numeric equality filter.
     #[inline]
-    pub fn numeric_eq(field: impl Into<String>, value: f64) -> Self {
+    pub fn numeric_eq(
+        field: impl Into<String>,
+        value: f64,
+    ) -> Self {
         Self::NumericRange {
             field: field.into(),
             min: Some(value),
@@ -257,7 +279,10 @@ impl FilterCondition {
 
     /// Create a TEXT field prefix filter.
     #[inline]
-    pub fn text_prefix(field: impl Into<String>, value: impl Into<String>) -> Self {
+    pub fn text_prefix(
+        field: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Self {
         Self::TextPrefix {
             field: field.into(),
             value: value.into(),
@@ -266,7 +291,10 @@ impl FilterCondition {
 
     /// Create a TEXT field contains filter.
     #[inline]
-    pub fn text_contains(field: impl Into<String>, value: impl Into<String>) -> Self {
+    pub fn text_contains(
+        field: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Self {
         Self::TextContains {
             field: field.into(),
             value: value.into(),
@@ -275,7 +303,10 @@ impl FilterCondition {
 
     /// Create a TEXT field exact phrase filter.
     #[inline]
-    pub fn text_exact(field: impl Into<String>, value: impl Into<String>) -> Self {
+    pub fn text_exact(
+        field: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Self {
         Self::TextExact {
             field: field.into(),
             value: value.into(),
@@ -284,7 +315,10 @@ impl FilterCondition {
 
     /// Create a TEXT field fuzzy filter.
     #[inline]
-    pub fn text_fuzzy(field: impl Into<String>, value: impl Into<String>) -> Self {
+    pub fn text_fuzzy(
+        field: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Self {
         Self::TextFuzzy {
             field: field.into(),
             value: value.into(),
@@ -310,29 +344,55 @@ impl FilterCondition {
     /// Convert this condition to a RediSearch query clause.
     pub fn to_query_clause(&self) -> String {
         match self {
-            Self::TagEquals { field, values } => {
+            Self::TagEquals {
+                field,
+                values,
+            } => {
                 let escaped: Vec<String> = values.iter().map(|v| escape_for_tag_query(v)).collect();
                 format!("(@{}:{{{}}})", field, escaped.join(TAG_SEPARATOR))
             }
-            Self::NumericRange { field, min, max } => {
+            Self::NumericRange {
+                field,
+                min,
+                max,
+            } => {
                 let min_s = min.map(format_numeric).unwrap_or_else(|| "-inf".to_string());
                 let max_s = max.map(format_numeric).unwrap_or_else(|| "+inf".to_string());
                 format!("(@{}:[{} {}])", field, min_s, max_s)
             }
-            Self::BooleanEquals { field, value } => {
-                let normalized = if *value { "true" } else { "false" };
+            Self::BooleanEquals {
+                field,
+                value,
+            } => {
+                let normalized = if *value {
+                    "true"
+                } else {
+                    "false"
+                };
                 format!("(@{}:{{{}}})", field, normalized)
             }
-            Self::TextPrefix { field, value } => {
+            Self::TextPrefix {
+                field,
+                value,
+            } => {
                 format!("(@{}:{})", field, escape_for_text_prefix(value))
             }
-            Self::TextContains { field, value } => {
+            Self::TextContains {
+                field,
+                value,
+            } => {
                 format!("(@{}:{})", field, escape_for_text_contains(value))
             }
-            Self::TextExact { field, value } => {
+            Self::TextExact {
+                field,
+                value,
+            } => {
                 format!("(@{}:{})", field, escape_for_text_exact(value))
             }
-            Self::TextFuzzy { field, value } => {
+            Self::TextFuzzy {
+                field,
+                value,
+            } => {
                 format!("(@{}:{})", field, escape_for_text_fuzzy(value))
             }
             Self::And(conditions) => {
@@ -403,6 +463,10 @@ pub struct SearchParams {
     pub text_query: Option<String>,
     /// Raw RediSearch query escape hatch. Use sparingly.
     pub raw: Option<String>,
+    /// Explicit result offset, overriding the page-derived one. Use for windows
+    /// that aren't page-aligned (RediSearch `LIMIT` accepts any first-offset);
+    /// `page_size` remains the count. `None` keeps `(page-1) * page_size`.
+    pub offset_override: Option<u64>,
 }
 
 impl Default for SearchParams {
@@ -420,56 +484,80 @@ impl SearchParams {
             conditions: Vec::new(),
             text_query: None,
             raw: None,
+            offset_override: None,
         }
     }
 
     #[inline]
     pub fn offset(&self) -> u64 {
-        self.page.saturating_sub(1) * self.page_size
+        self.offset_override
+            .unwrap_or_else(|| self.page.saturating_sub(1) * self.page_size)
     }
 
     #[inline]
-    pub fn with_sort(mut self, sort: Option<SearchSort>) -> Self {
+    pub fn with_sort(
+        mut self,
+        sort: Option<SearchSort>,
+    ) -> Self {
         self.sort = sort;
         self
     }
 
     /// Add a single filter condition (leaf or composed).
     #[inline]
-    pub fn with_condition(mut self, condition: FilterCondition) -> Self {
+    pub fn with_condition(
+        mut self,
+        condition: FilterCondition,
+    ) -> Self {
         self.conditions.push(condition);
         self
     }
 
     /// Add multiple filter conditions.
     #[inline]
-    pub fn with_conditions(mut self, conditions: impl IntoIterator<Item = FilterCondition>) -> Self {
+    pub fn with_conditions(
+        mut self,
+        conditions: impl IntoIterator<Item = FilterCondition>,
+    ) -> Self {
         self.conditions.extend(conditions);
         self
     }
 
     /// Set the free-text search query.
     #[inline]
-    pub fn with_text_query(mut self, query: impl Into<String>) -> Self {
+    pub fn with_text_query(
+        mut self,
+        query: impl Into<String>,
+    ) -> Self {
         self.text_query = Some(query.into());
         self
     }
 
     /// Set a raw RediSearch query clause (escape hatch - use sparingly).
     #[inline]
-    pub fn with_raw(mut self, raw: impl Into<String>) -> Self {
+    pub fn with_raw(
+        mut self,
+        raw: impl Into<String>,
+    ) -> Self {
         self.raw = Some(raw.into());
         self
     }
 
     #[inline]
-    pub fn with_page(mut self, page: u64, page_size: u64) -> Self {
+    pub fn with_page(
+        mut self,
+        page: u64,
+        page_size: u64,
+    ) -> Self {
         self.page = page;
         self.page_size = page_size;
         self
     }
 
-    pub fn build_query(&self, base: &str) -> String {
+    pub fn build_query(
+        &self,
+        base: &str,
+    ) -> String {
         let estimated_capacity = 3 + self.conditions.len();
         let mut clauses = Vec::with_capacity(estimated_capacity);
 
@@ -701,7 +789,10 @@ pub struct IndexDefinition {
     pub schema: &'static [IndexField],
 }
 
-pub async fn ensure_index(conn: &mut ConnectionManager, definition: &IndexDefinition) -> Result<(), RepoError> {
+pub async fn ensure_index(
+    conn: &mut ConnectionManager,
+    definition: &IndexDefinition,
+) -> Result<(), RepoError> {
     let indexes: Vec<String> = cmd("FT._LIST").query_async(conn).await?;
     if indexes.iter().any(|name| name == &definition.name) {
         return Ok(());
@@ -775,7 +866,10 @@ pub trait SearchableManager {
         String::new()
     }
 
-    async fn ensure_index(&self, conn: &mut ConnectionManager) -> Result<(), RepoError> {
+    async fn ensure_index(
+        &self,
+        conn: &mut ConnectionManager,
+    ) -> Result<(), RepoError> {
         let definition = self.index_definition();
         ensure_index(conn, &definition).await
     }
@@ -865,7 +959,10 @@ where
     })
 }
 
-pub fn build_text_query(term: Option<String>, fields: &[&str]) -> Option<String> {
+pub fn build_text_query(
+    term: Option<String>,
+    fields: &[&str],
+) -> Option<String> {
     let raw = term?.trim().to_string();
     if raw.is_empty() {
         return None;
@@ -938,7 +1035,10 @@ fn value_to_string(value: &Value) -> Result<String, RepoError> {
         Value::Int(v) => Ok(v.to_string()),
         Value::Double(v) => Ok(v.to_string()),
         Value::Boolean(v) => Ok(v.to_string()),
-        Value::VerbatimString { text, .. } => Ok(text.clone()),
+        Value::VerbatimString {
+            text,
+            ..
+        } => Ok(text.clone()),
         _ => from_redis_value::<String>(value).map_err(|err| RepoError::Other {
             message: Cow::Owned(format!("Unexpected search value type: {}", err)),
         }),
@@ -985,6 +1085,9 @@ fn value_to_string(value: &Value) -> Result<String, RepoError> {
 /// // Periods are escaped (JSON path separator)
 /// assert_eq!(escape_for_tag_query("list.test"), "list\\.test");
 ///
+/// // Plus signs are escaped (AND operator)
+/// assert_eq!(escape_for_tag_query("user+1@example.com"), "user\\+1\\@example\\.com");
+///
 /// // Combined escaping
 /// assert_eq!(escape_for_tag_query("test-user|admin"), "test\\-user\\|admin");
 /// ```
@@ -1001,8 +1104,9 @@ pub fn escape_for_tag_query(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len());
     for ch in value.chars() {
         match ch {
-            // Core TAG escaping per docs (including . which is JSON path separator)
-            '$' | '{' | '}' | '\\' | '|' | '.' => {
+            // Core TAG escaping per docs (including . which is JSON path separator,
+            // @ which is the field selector prefix, and + which is the AND operator)
+            '$' | '{' | '}' | '\\' | '|' | '.' | '@' | '+' => {
                 escaped.push('\\');
                 escaped.push(ch);
             }
@@ -1941,11 +2045,17 @@ mod tests {
         // ((A OR B) AND C) OR ((D AND E) OR F)
         let condition = FilterCondition::or([
             FilterCondition::and([
-                FilterCondition::or([FilterCondition::tag_eq("a", "1"), FilterCondition::tag_eq("b", "2")]),
+                FilterCondition::or([
+                    FilterCondition::tag_eq("a", "1"),
+                    FilterCondition::tag_eq("b", "2"),
+                ]),
                 FilterCondition::tag_eq("c", "3"),
             ]),
             FilterCondition::or([
-                FilterCondition::and([FilterCondition::tag_eq("d", "4"), FilterCondition::tag_eq("e", "5")]),
+                FilterCondition::and([
+                    FilterCondition::tag_eq("d", "4"),
+                    FilterCondition::tag_eq("e", "5"),
+                ]),
                 FilterCondition::tag_eq("f", "6"),
             ]),
         ]);

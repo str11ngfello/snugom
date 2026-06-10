@@ -1,4 +1,4 @@
-use std::{borrow::Cow, marker::PhantomData};
+use std::{borrow::Cow, collections::HashMap, marker::PhantomData};
 
 const MAX_CASCADE_DEPTH: usize = 8;
 
@@ -9,16 +9,17 @@ use crate::{
     runtime::{
         MutationExecutor, RedisExecutor,
         commands::{
-            CascadeDirective, CascadeRelationSpec, DeleteCascadeRelation, GetOrCreateCommand, MutationCommand,
-            MutationPlan, PatchOperationPayload, PatchOperationType, RelationMutation, UniqueConstraintCheck,
-            UniqueConstraintDefinition, UpsertCommand, build_entity_delete, build_entity_mutation,
-            build_entity_patch, build_unique_constraint_checks,
+            CascadeDirective, CascadeRelationSpec, DeleteCascadeRelation, EntityMutation, FindInclude, FindPayload,
+            FindQuery, GetOrCreateCommand, MutationCommand, MutationPlan, PatchOperationPayload, PatchOperationType,
+            RelationMutation, UniqueConstraintCheck, UniqueConstraintDefinition, UpsertCommand, build_entity_delete,
+            build_entity_mutation, build_entity_patch, build_unique_constraint_checks,
         },
+        executor::execute_find,
     },
     search::{self, SearchEntity, SearchParams, SearchQuery, SearchResult},
     types::{
-        SnugomModel, CascadePolicy, DatetimeMirrorValue, EntityDescriptor, EntityMetadata, FieldDescriptor,
-        FieldType, RelationKind, ValidationRule, ValidationScope,
+        CascadePolicy, DatetimeMirrorValue, EntityDescriptor, EntityMetadata, FieldDescriptor, FieldType, RelationKind,
+        SnugomModel, ValidationRule, ValidationScope,
     },
     validators::{is_valid_email, is_valid_url, is_valid_uuid},
 };
@@ -27,6 +28,137 @@ use redis::{aio::ConnectionManager, cmd};
 use regex::Regex;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Map, Number, Value};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Find result types — returned by Repo::find_with_includes
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Result of an atomic find-with-includes operation.
+/// Mirrors the recursive JSON structure from entity_find.lua.
+///
+/// Entity JSON is embedded raw (not string-encoded) in the Lua response,
+/// following the same pattern as `entity_get_or_create.lua`.
+/// JSON.GET with `$` returns an array `[{...}]`; deserialization extracts
+/// the first element.
+#[derive(Debug)]
+pub struct FindResult {
+    pub entity_value: Value,
+    pub includes: HashMap<String, Vec<FindChildResult>>,
+    pub relation_metadata: HashMap<String, RelationMetadata>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RelationMetadata {
+    pub total: Option<u64>,
+    pub has_more: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct RelationMetadataResponse {
+    pub total: Option<u64>,
+    pub returned: usize,
+    pub has_more: Option<bool>,
+}
+
+/// A single child entity from an include, with optional nested includes.
+#[derive(Debug)]
+pub struct FindChildResult {
+    /// The child entity as a parsed serde Value object.
+    pub value: Value,
+    /// Nested includes for this child (recursive).
+    pub includes: HashMap<String, Vec<FindChildResult>>,
+}
+
+impl FindResult {
+    /// Deserialize the parent entity from the JSON.GET `$` output.
+    ///
+    /// JSON.GET with `$` returns a JSON array `[{...}]`. This method
+    /// extracts the first element and deserializes as `T`.
+    pub fn deserialize_entity<T: serde::de::DeserializeOwned>(&self) -> Result<T, RepoError> {
+        deserialize_json_get_value(&self.entity_value)
+    }
+
+    pub fn children(&self, alias: &str) -> &[FindChildResult] {
+        self.includes.get(alias).map(|v| v.as_slice()).unwrap_or(&[])
+    }
+
+    /// Deserialize every child for an include key into a typed `Vec<T>`.
+    ///
+    /// Returns `Ok(None)` when the key was not included at all, distinct from
+    /// `Ok(Some(vec![]))` for an include that matched zero rows. Works for both
+    /// forward (has_many) and reverse (incoming belongs_to) includes.
+    pub fn include<T: serde::de::DeserializeOwned>(
+        &self,
+        alias: &str,
+    ) -> Result<Option<Vec<T>>, RepoError> {
+        match self.includes.get(alias) {
+            None => Ok(None),
+            Some(children) => children.iter().map(|child| child.deserialize()).collect::<Result<Vec<T>, _>>().map(Some),
+        }
+    }
+
+    pub fn insert_relation_data<T: serde::Serialize>(
+        &mut self,
+        alias: &str,
+        data: crate::types::RelationData<Vec<T>>,
+    ) {
+        let children: Vec<FindChildResult> = data
+            .items
+            .iter()
+            .filter_map(|item| {
+                let val = serde_json::to_value(item).ok()?;
+                Some(FindChildResult {
+                    value: val,
+                    includes: HashMap::new(),
+                })
+            })
+            .collect();
+        self.includes.insert(alias.to_string(), children);
+        if data.total.is_some() || data.has_more.is_some() {
+            self.relation_metadata.insert(alias.to_string(), RelationMetadata {
+                total: data.total,
+                has_more: data.has_more,
+            });
+        }
+    }
+}
+
+impl FindChildResult {
+    /// Deserialize this child entity.
+    pub fn deserialize<T: serde::de::DeserializeOwned>(&self) -> Result<T, RepoError> {
+        deserialize_json_get_value(&self.value)
+    }
+
+    /// Get nested children for a given alias, or an empty slice if not present.
+    pub fn children(&self, alias: &str) -> &[FindChildResult] {
+        self.includes.get(alias).map(|v| v.as_slice()).unwrap_or(&[])
+    }
+}
+
+/// Deserialize a `T` from either a `[{...}]` array (JSON.GET `$`) or a bare object,
+/// using the first array element when present.
+pub fn deserialize_json_get_value<T: serde::de::DeserializeOwned>(value: &Value) -> Result<T, RepoError> {
+    let entity_json = if let Some(arr) = value.as_array() {
+        arr.first().cloned().unwrap_or(value.clone())
+    } else {
+        value.clone()
+    };
+    serde_json::from_value(entity_json).map_err(|err| RepoError::Other {
+        message: Cow::Owned(format!("failed to deserialize entity: {err}")),
+    })
+}
+
+/// Specification for an include in find_with_includes.
+/// Describes which relation to follow and how to build Redis keys.
+#[derive(Debug, Clone)]
+pub struct FindIncludeSpec {
+    /// Relation alias (matches the field name in the entity descriptor).
+    pub alias: String,
+    /// Target collection name for the child entities.
+    pub target_collection: String,
+    /// Nested includes (recursive).
+    pub nested: Vec<FindIncludeSpec>,
+}
 
 pub trait MutationPayloadBuilder {
     type Entity: EntityMetadata;
@@ -44,7 +176,11 @@ impl<T> Repo<T>
 where
     T: SnugomModel + DeserializeOwned,
 {
-    pub async fn get(&self, conn: &mut ConnectionManager, entity_id: &str) -> Result<Option<T>, RepoError> {
+    pub async fn get(
+        &self,
+        conn: &mut ConnectionManager,
+        entity_id: &str,
+    ) -> Result<Option<T>, RepoError> {
         let key = self.entity_key(entity_id);
         let result: Option<String> = cmd("JSON.GET").arg(&key).query_async(conn).await?;
         match result {
@@ -58,20 +194,17 @@ where
         }
     }
 
-    pub async fn count(&self, conn: &mut ConnectionManager) -> Result<u64, RepoError> {
+    pub async fn count(
+        &self,
+        conn: &mut ConnectionManager,
+    ) -> Result<u64, RepoError> {
         const SCAN_COUNT: usize = 1024;
-        let pattern = format!(
-            "{}:{}:{}:*",
-            self.prefix, self.descriptor.service, self.descriptor.collection
-        );
+        let pattern = format!("{}:{}:*", self.prefix, self.descriptor.collection);
         // Prefix to filter out unique constraint keys
-        // Key format: {prefix}:{service}:{collection}:{fourth_segment}:...
-        // Entity keys have entity_id as fourth segment
-        // Unique constraint keys have "unique" or "unique_compound" as fourth segment
-        let unique_prefix = format!(
-            "{}:{}:{}:unique",
-            self.prefix, self.descriptor.service, self.descriptor.collection
-        );
+        // Key format: {prefix}:{collection}:{third_segment}:...
+        // Entity keys have entity_id as third segment
+        // Unique constraint keys have "unique" or "unique_compound" as third segment
+        let unique_prefix = format!("{}:{}:unique", self.prefix, self.descriptor.collection);
         let mut cursor: u64 = 0;
         let mut total: u64 = 0;
         loop {
@@ -84,10 +217,7 @@ where
                 .query_async(conn)
                 .await?;
             // Filter out unique constraint keys (both :unique: and :unique_compound:)
-            let entity_count = batch
-                .iter()
-                .filter(|key| !key.starts_with(&unique_prefix))
-                .count();
+            let entity_count = batch.iter().filter(|key| !key.starts_with(&unique_prefix)).count();
             total += entity_count as u64;
             cursor = next_cursor;
             if cursor == 0 {
@@ -96,9 +226,169 @@ where
         }
         Ok(total)
     }
+
+    /// Batch-fetch entities by IDs using JSON.MGET.
+    ///
+    /// Returns only the entities that exist (missing IDs are silently skipped).
+    /// Order is not guaranteed to match the input order.
+    pub async fn get_many(
+        &self,
+        conn: &mut ConnectionManager,
+        ids: &[&str],
+    ) -> Result<Vec<T>, RepoError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let keys: Vec<String> = ids.iter().map(|id| self.entity_key(id)).collect();
+        let mut mget_cmd = cmd("JSON.MGET");
+        for key in &keys {
+            mget_cmd.arg(key);
+        }
+        mget_cmd.arg("$");
+        // JSON.MGET with $ returns array-wrapped results: [{"id":"..."}] per key.
+        // Parse each as Value, then extract first element — same as JSON.GET $ pattern.
+        let results: Vec<Option<String>> = mget_cmd.query_async(conn).await?;
+        let mut entities = Vec::with_capacity(results.len());
+        for json_opt in results {
+            if let Some(json) = json_opt {
+                let value: Value = serde_json::from_str(&json).map_err(|err| RepoError::Other {
+                    message: Cow::Owned(format!("failed to parse JSON.MGET result: {err}")),
+                })?;
+                let entity: T = deserialize_json_get_value(&value)?;
+                entities.push(entity);
+            }
+        }
+        Ok(entities)
+    }
+
+    /// Atomic find: get entity + related children in a single Lua script call.
+    ///
+    /// Uses `entity_find.lua` to atomically read the parent entity and all
+    /// included relations (with recursive nesting) in one Redis call.
+    /// No interleaving from other clients between the parent read and child reads.
+    pub async fn find_with_includes(
+        &self,
+        conn: &mut ConnectionManager,
+        entity_id: &str,
+        include_specs: Vec<FindIncludeSpec>,
+    ) -> Result<FindResult, RepoError> {
+        let entity_key = self.entity_key(entity_id);
+        let includes = self.build_find_includes(&include_specs, Some(entity_id));
+
+        let query = FindQuery {
+            find: FindPayload {
+                entity_key,
+                includes,
+            },
+        };
+
+        let response = execute_find(conn, &query).await?;
+        Self::parse_find_response(&response)
+    }
+
+    /// Build the recursive `FindInclude` payload for the Lua script.
+    fn build_find_includes(
+        &self,
+        specs: &[FindIncludeSpec],
+        parent_id: Option<&str>,
+    ) -> Vec<FindInclude> {
+        specs
+            .iter()
+            .map(|spec| {
+                let child_prefix = format!("{}:{}:", self.prefix, spec.target_collection);
+
+                let (relation_key, relation_key_prefix) = if let Some(pid) = parent_id {
+                    let key = self.key_context().relation(&spec.alias, pid);
+                    (Some(key), None)
+                } else {
+                    let prefix = format!("{}:rel:{}:", self.prefix, spec.alias);
+                    (None, Some(prefix))
+                };
+
+                // Nested includes never have a known parent_id
+                let nested = self.build_find_includes(&spec.nested, None);
+
+                FindInclude {
+                    alias: spec.alias.clone(),
+                    relation_key,
+                    relation_key_prefix,
+                    child_prefix,
+                    includes: nested,
+                }
+            })
+            .collect()
+    }
+
+    /// Parse the JSON response from entity_find.lua into FindResult.
+    ///
+    /// The Lua script embeds entity JSON raw (via string concatenation),
+    /// so `entity` is a JSON value (array from JSON.GET $), not a string.
+    /// Same pattern as `get_or_create` response parsing.
+    fn parse_find_response(response: &Value) -> Result<FindResult, RepoError> {
+        let entity_value = response.get("entity").ok_or(RepoError::Other {
+            message: Cow::Borrowed("find response missing 'entity' field"),
+        })?.clone();
+
+        let includes = response
+            .get("includes")
+            .and_then(|v| v.as_object())
+            .map(|obj| Self::parse_includes_map(obj))
+            .transpose()?
+            .unwrap_or_default();
+
+        Ok(FindResult {
+            entity_value,
+            includes,
+            relation_metadata: HashMap::new(),
+        })
+    }
+
+    /// Recursively parse the includes map from the Lua response.
+    ///
+    /// Child `json` fields are raw JSON values (embedded via string
+    /// concatenation in Lua), not string-encoded.
+    fn parse_includes_map(
+        obj: &serde_json::Map<String, Value>,
+    ) -> Result<HashMap<String, Vec<FindChildResult>>, RepoError> {
+        let mut map = HashMap::with_capacity(obj.len());
+        for (alias, children_val) in obj {
+            let children = children_val.as_array().ok_or(RepoError::Other {
+                message: Cow::Owned(format!("include '{alias}' is not an array")),
+            })?;
+            let mut results = Vec::with_capacity(children.len());
+            for child in children {
+                let raw = child.get("json").ok_or(RepoError::Other {
+                    message: Cow::Owned(format!("include '{alias}' child missing 'json' field")),
+                })?;
+                // JSON.GET `$` yields a single-element array `[{...}]`; unwrap to the object so
+                // every FindChildResult.value is the entity object, uniform across all paths.
+                let value = match raw.as_array() {
+                    Some(arr) if arr.len() == 1 => arr[0].clone(),
+                    _ => raw.clone(),
+                };
+
+                let nested_includes = child
+                    .get("includes")
+                    .and_then(|v| v.as_object())
+                    .map(|nested_obj| Self::parse_includes_map(nested_obj))
+                    .transpose()?
+                    .unwrap_or_default();
+
+                results.push(FindChildResult {
+                    value,
+                    includes: nested_includes,
+                });
+            }
+            map.insert(alias.clone(), results);
+        }
+        Ok(map)
+    }
 }
 
-fn length_for_value(field_type: FieldType, value: &Value) -> Option<usize> {
+fn length_for_value(
+    field_type: FieldType,
+    value: &Value,
+) -> Option<usize> {
     match field_type {
         FieldType::String | FieldType::DateTime => value.as_str().map(|s| s.chars().count()),
         FieldType::Array => value.as_array().map(|arr| arr.len()),
@@ -122,57 +412,70 @@ fn validate_rule_on_value(
     issues: &mut Vec<ValidationIssue>,
 ) {
     match rule {
-        ValidationRule::Length { min, max } => {
+        ValidationRule::Length {
+            min,
+            max,
+        } => {
             if let Some(len) = length_for_value(field_type, value) {
                 if let Some(min_len) = min
-                    && len < *min_len {
-                        issues.push(ValidationIssue::new(
-                            field_name,
-                            "validation.length",
-                            format!("length must be at least {}", min_len),
-                        ));
-                    }
+                    && len < *min_len
+                {
+                    issues.push(ValidationIssue::new(
+                        field_name,
+                        "validation.length",
+                        format!("length must be at least {}", min_len),
+                    ));
+                }
                 if let Some(max_len) = max
-                    && len > *max_len {
-                        issues.push(ValidationIssue::new(
-                            field_name,
-                            "validation.length",
-                            format!("length must be at most {}", max_len),
-                        ));
-                    }
+                    && len > *max_len
+                {
+                    issues.push(ValidationIssue::new(
+                        field_name,
+                        "validation.length",
+                        format!("length must be at most {}", max_len),
+                    ));
+                }
             }
         }
-        ValidationRule::Range { min, max } => {
+        ValidationRule::Range {
+            min,
+            max,
+        } => {
             if let Some(candidate) = numeric_from_value(value) {
                 if let Some(min_repr) = min
                     && let Ok(parsed_min) = min_repr.parse::<f64>()
-                        && candidate < parsed_min {
-                            issues.push(ValidationIssue::new(
-                                field_name,
-                                "validation.range",
-                                format!("value must be at least {}", min_repr),
-                            ));
-                        }
-                if let Some(max_repr) = max
-                    && let Ok(parsed_max) = max_repr.parse::<f64>()
-                        && candidate > parsed_max {
-                            issues.push(ValidationIssue::new(
-                                field_name,
-                                "validation.range",
-                                format!("value must be at most {}", max_repr),
-                            ));
-                        }
-            }
-        }
-        ValidationRule::Regex { pattern } => {
-            if let Some(candidate) = value.as_str()
-                && Regex::new(pattern).map(|regex| !regex.is_match(candidate)).unwrap_or(false) {
+                    && candidate < parsed_min
+                {
                     issues.push(ValidationIssue::new(
                         field_name,
-                        "validation.regex",
-                        format!("value does not match pattern {}", pattern),
+                        "validation.range",
+                        format!("value must be at least {}", min_repr),
                     ));
                 }
+                if let Some(max_repr) = max
+                    && let Ok(parsed_max) = max_repr.parse::<f64>()
+                    && candidate > parsed_max
+                {
+                    issues.push(ValidationIssue::new(
+                        field_name,
+                        "validation.range",
+                        format!("value must be at most {}", max_repr),
+                    ));
+                }
+            }
+        }
+        ValidationRule::Regex {
+            pattern,
+        } => {
+            if let Some(candidate) = value.as_str()
+                && Regex::new(pattern).map(|regex| !regex.is_match(candidate)).unwrap_or(false)
+            {
+                issues.push(ValidationIssue::new(
+                    field_name,
+                    "validation.regex",
+                    format!("value does not match pattern {}", pattern),
+                ));
+            }
         }
         ValidationRule::Enum {
             allowed,
@@ -200,41 +503,55 @@ fn validate_rule_on_value(
         }
         ValidationRule::Email => {
             if let Some(candidate) = value.as_str()
-                && !is_valid_email(candidate) {
-                    issues.push(ValidationIssue::new(
-                        field_name,
-                        "validation.email",
-                        "value must be a valid email address",
-                    ));
-                }
+                && !is_valid_email(candidate)
+            {
+                issues.push(ValidationIssue::new(
+                    field_name,
+                    "validation.email",
+                    "value must be a valid email address",
+                ));
+            }
         }
         ValidationRule::Url => {
             if let Some(candidate) = value.as_str()
-                && !is_valid_url(candidate) {
-                    issues.push(ValidationIssue::new(field_name, "validation.url", "value must be a valid URL"));
-                }
+                && !is_valid_url(candidate)
+            {
+                issues.push(ValidationIssue::new(field_name, "validation.url", "value must be a valid URL"));
+            }
         }
         ValidationRule::Uuid => {
             if let Some(candidate) = value.as_str()
-                && !is_valid_uuid(candidate) {
-                    issues.push(ValidationIssue::new(
-                        field_name,
-                        "validation.uuid",
-                        "value must be a valid UUID",
-                    ));
-                }
+                && !is_valid_uuid(candidate)
+            {
+                issues.push(ValidationIssue::new(
+                    field_name,
+                    "validation.uuid",
+                    "value must be a valid UUID",
+                ));
+            }
         }
-        ValidationRule::RequiredIf { .. }
-        | ValidationRule::ForbiddenIf { .. }
-        | ValidationRule::Unique { .. }
-        | ValidationRule::Custom { .. } => {
+        ValidationRule::RequiredIf {
+            ..
+        }
+        | ValidationRule::ForbiddenIf {
+            ..
+        }
+        | ValidationRule::Unique {
+            ..
+        }
+        | ValidationRule::Custom {
+            ..
+        } => {
             // These rules depend on wider entity context and are enforced during full entity validation.
             // Unique constraints are enforced at database level via Lua script.
         }
     }
 }
 
-fn validate_field_assignment(field: &FieldDescriptor, value: &Value) -> Vec<ValidationIssue> {
+fn validate_field_assignment(
+    field: &FieldDescriptor,
+    value: &Value,
+) -> Vec<ValidationIssue> {
     let mut issues = Vec::new();
     for descriptor in &field.validations {
         match descriptor.scope {
@@ -254,7 +571,10 @@ fn validate_field_assignment(field: &FieldDescriptor, value: &Value) -> Vec<Vali
     issues
 }
 
-fn apply_patch_operations_to_value(target: &mut Value, operations: &[PatchOperation]) -> Result<(), RepoError> {
+fn apply_patch_operations_to_value(
+    target: &mut Value,
+    operations: &[PatchOperation],
+) -> Result<(), RepoError> {
     for op in operations {
         let path = op.path.strip_prefix("$").unwrap_or(&op.path);
         let path = path.strip_prefix('.').unwrap_or(path);
@@ -274,7 +594,11 @@ fn apply_patch_operations_to_value(target: &mut Value, operations: &[PatchOperat
     Ok(())
 }
 
-fn merge_value_at_path(target: &mut Value, segments: &[&str], patch: Value) -> Result<(), RepoError> {
+fn merge_value_at_path(
+    target: &mut Value,
+    segments: &[&str],
+    patch: Value,
+) -> Result<(), RepoError> {
     let key = segments.last().copied().unwrap_or("");
     let parent = parent_map_mut(target, &segments[..segments.len() - 1])?;
     match parent.get_mut(key) {
@@ -286,7 +610,10 @@ fn merge_value_at_path(target: &mut Value, segments: &[&str], patch: Value) -> R
     Ok(())
 }
 
-fn merge_json_values(target: &mut Value, patch: Value) {
+fn merge_json_values(
+    target: &mut Value,
+    patch: Value,
+) {
     match (target, patch) {
         (Value::Object(target_map), Value::Object(patch_map)) => {
             for (key, value) in patch_map {
@@ -304,7 +631,11 @@ fn merge_json_values(target: &mut Value, patch: Value) {
     }
 }
 
-fn set_value_at_path(target: &mut Value, segments: &[&str], value: Value) -> Result<(), RepoError> {
+fn set_value_at_path(
+    target: &mut Value,
+    segments: &[&str],
+    value: Value,
+) -> Result<(), RepoError> {
     if segments.is_empty() {
         return Err(RepoError::Validation(ValidationError::single(
             "",
@@ -318,7 +649,10 @@ fn set_value_at_path(target: &mut Value, segments: &[&str], value: Value) -> Res
     Ok(())
 }
 
-fn delete_value_at_path(target: &mut Value, segments: &[&str]) -> Result<(), RepoError> {
+fn delete_value_at_path(
+    target: &mut Value,
+    segments: &[&str],
+) -> Result<(), RepoError> {
     if segments.is_empty() {
         return Err(RepoError::Validation(ValidationError::single(
             "",
@@ -338,7 +672,10 @@ fn delete_value_at_path(target: &mut Value, segments: &[&str]) -> Result<(), Rep
     Ok(())
 }
 
-fn parent_map_mut<'a>(value: &'a mut Value, segments: &[&str]) -> Result<&'a mut Map<String, Value>, RepoError> {
+fn parent_map_mut<'a>(
+    value: &'a mut Value,
+    segments: &[&str],
+) -> Result<&'a mut Map<String, Value>, RepoError> {
     let mut current = value;
     for segment in segments {
         match current {
@@ -364,7 +701,10 @@ fn parent_map_mut<'a>(value: &'a mut Value, segments: &[&str]) -> Result<&'a mut
     }
 }
 
-fn validate_entity_json(descriptor: &EntityDescriptor, value: &Value) -> ValidationResult<()> {
+fn validate_entity_json(
+    descriptor: &EntityDescriptor,
+    value: &Value,
+) -> ValidationResult<()> {
     let object = value.as_object().ok_or_else(|| {
         ValidationError::single("__entity", "validation.invalid_type", "expected object for entity payload")
     })?;
@@ -397,19 +737,19 @@ fn validate_entity_json(descriptor: &EntityDescriptor, value: &Value) -> Validat
 
 fn cascade_relation_specs_for(
     descriptor: &EntityDescriptor,
-    stack: &mut Vec<(String, String)>,
+    stack: &mut Vec<String>,
     depth: usize,
 ) -> Result<Vec<CascadeRelationSpec>, RepoError> {
     if depth > MAX_CASCADE_DEPTH {
         return Err(RepoError::Other {
             message: Cow::Owned(format!(
-                "cascade depth exceeded limit of {} at {}:{}",
-                MAX_CASCADE_DEPTH, descriptor.service, descriptor.collection
+                "cascade depth exceeded limit of {} at {}",
+                MAX_CASCADE_DEPTH, descriptor.collection
             )),
         });
     }
     let mut specs = Vec::new();
-    stack.push((descriptor.service.clone(), descriptor.collection.clone()));
+    stack.push(descriptor.collection.clone());
 
     // 1. Process the entity's own declared relations (has_many, many_to_many)
     // Skip belongs_to relations - their cascade policy describes what happens when the PARENT is deleted,
@@ -425,20 +765,19 @@ fn cascade_relation_specs_for(
         };
 
         let child_relations = if matches!(relation.cascade, CascadePolicy::Delete) {
-            let service = relation.target_service.clone().unwrap_or_else(|| descriptor.service.clone());
-            if stack.contains(&(service.clone(), relation.target.clone())) {
+            if stack.contains(&relation.target) {
                 return Err(RepoError::Other {
                     message: Cow::Owned(format!(
-                        "cycle detected in cascade chain: {}:{}, relation {} -> {}:{}",
-                        descriptor.service, descriptor.collection, relation.alias, service, relation.target
+                        "cycle detected in cascade chain: {}, relation {} -> {}",
+                        descriptor.collection, relation.alias, relation.target
                     )),
                 });
             }
             let target_descriptor =
-                registry::get_descriptor(&service, &relation.target).ok_or_else(|| RepoError::Other {
+                registry::get_descriptor(&relation.target).ok_or_else(|| RepoError::Other {
                     message: Cow::Owned(format!(
-                        "descriptor for service `{}` collection `{}` is not registered",
-                        service, relation.target
+                        "descriptor for collection `{}` is not registered",
+                        relation.target
                     )),
                 })?;
             cascade_relation_specs_for(&target_descriptor, stack, depth + 1)?
@@ -449,7 +788,6 @@ fn cascade_relation_specs_for(
         specs.push(CascadeRelationSpec {
             alias: relation.alias.clone(),
             target_collection: Some(relation.target.clone()),
-            target_service: relation.target_service.clone(),
             cascade: directive,
             maintain_reverse: matches!(relation.kind, RelationKind::ManyToMany),
             child_relations,
@@ -457,7 +795,7 @@ fn cascade_relation_specs_for(
     }
 
     // 2. Process incoming belongs_to relations from other entities
-    let incoming = registry::find_incoming_relations(&descriptor.service, &descriptor.collection);
+    let incoming = registry::find_incoming_relations(&descriptor.collection);
     for inc in incoming {
         if !matches!(inc.kind, RelationKind::BelongsTo) {
             continue;
@@ -469,17 +807,17 @@ fn cascade_relation_specs_for(
         };
 
         // Check for cycles
-        if stack.contains(&(inc.source_service.clone(), inc.source_collection.clone())) {
+        if stack.contains(&inc.source_collection) {
             return Err(RepoError::Other {
                 message: Cow::Owned(format!(
-                    "cycle detected in cascade chain via belongs_to: {}:{} -> {}:{}",
-                    descriptor.service, descriptor.collection, inc.source_service, inc.source_collection
+                    "cycle detected in cascade chain via belongs_to: {} -> {}",
+                    descriptor.collection, inc.source_collection
                 )),
             });
         }
 
         let child_relations = if matches!(inc.cascade, CascadePolicy::Delete) {
-            if let Some(child_desc) = registry::get_descriptor(&inc.source_service, &inc.source_collection) {
+            if let Some(child_desc) = registry::get_descriptor(&inc.source_collection) {
                 cascade_relation_specs_for(&child_desc, stack, depth + 1)?
             } else {
                 Vec::new()
@@ -493,7 +831,6 @@ fn cascade_relation_specs_for(
         specs.push(CascadeRelationSpec {
             alias: reverse_alias,
             target_collection: Some(inc.source_collection),
-            target_service: Some(inc.source_service),
             cascade: directive,
             maintain_reverse: false,
             child_relations,
@@ -530,7 +867,6 @@ fn delete_cascades_for_descriptor(
             alias: spec.alias,
             relation_key,
             target_collection: spec.target_collection.clone(),
-            target_service: spec.target_service.clone(),
             cascade: spec.cascade,
             maintain_reverse: spec.maintain_reverse,
             child_relations: spec.child_relations,
@@ -634,15 +970,109 @@ pub struct NestedMutation {
     pub payload: MutationPayload,
 }
 
-pub fn link_nested_to_parent(parent_descriptor: &EntityDescriptor, parent_id: &str, nested: &mut [NestedMutation]) {
+struct PreparedCreate {
+    entity_id: String,
+    mutation: EntityMutation,
+    pending_deletes: Vec<PendingRelationDelete>,
+}
+
+pub fn apply_fk_from_relations(
+    descriptor: &EntityDescriptor,
+    relations: &[RelationPlan],
+    payload: &mut Value,
+) {
+    let obj = match payload.as_object_mut() {
+        Some(obj) => obj,
+        None => return,
+    };
+
+    for rel_plan in relations {
+        let Some(rel_desc) = descriptor.relations.iter().find(|r| r.alias == rel_plan.alias) else {
+            continue;
+        };
+        if !matches!(rel_desc.kind, RelationKind::BelongsTo) {
+            continue;
+        }
+        let Some(fk_field) = &rel_desc.foreign_key else {
+            continue;
+        };
+        if let Some(first_id) = rel_plan.add.first() {
+            let current = obj.get(fk_field);
+            let is_pending = current.is_none()
+                || current == Some(&Value::Null)
+                || matches!(current, Some(Value::String(s)) if s.is_empty() || s == "__snugom_pending_fk__");
+            if is_pending {
+                obj.insert(fk_field.clone(), Value::String(first_id.clone()));
+            }
+        }
+    }
+}
+
+pub fn auto_parent_relations(
+    descriptor: &EntityDescriptor,
+    key_context: &KeyContext<'_>,
+    entity_id: &str,
+    payload: &Value,
+    mutations: &mut Vec<crate::runtime::commands::RelationMutation>,
+) {
+    let obj = match payload.as_object() {
+        Some(obj) => obj,
+        None => return,
+    };
+
+    for rel in &descriptor.relations {
+        if !matches!(rel.kind, RelationKind::BelongsTo) {
+            continue;
+        }
+        let Some(fk_field) = &rel.foreign_key else {
+            continue;
+        };
+        let Some(fk_value) = obj.get(fk_field).and_then(|v| v.as_str()) else {
+            continue;
+        };
+        if fk_value.is_empty() || fk_value == "__snugom_pending_fk__" {
+            continue;
+        }
+
+        let Some(parent_desc) = registry::get_descriptor(&rel.target) else {
+            continue;
+        };
+
+        // Find the parent's has-many relation that targets this child's collection
+        let Some(parent_rel) = parent_desc.relations.iter().find(|r| {
+            matches!(r.kind, RelationKind::HasMany) && r.target == descriptor.collection
+        }) else {
+            continue;
+        };
+
+        // Build the parent's relation key and emit SADD
+        let parent_key_context = KeyContext::new(key_context.prefix);
+        let relation_key = parent_key_context.relation(&parent_rel.alias, fk_value);
+        mutations.push(crate::runtime::commands::RelationMutation {
+            relation_key,
+            add: vec![entity_id.to_string()],
+            remove: vec![],
+            cascade: None,
+            maintain_reverse: false,
+        });
+    }
+}
+
+pub fn link_nested_to_parent(
+    parent_descriptor: &EntityDescriptor,
+    parent_id: &str,
+    nested: &mut [NestedMutation],
+) -> Vec<(String, String)> {
     if nested.is_empty() {
-        return;
+        return vec![];
     }
 
     let parent_collection = parent_descriptor.collection.clone();
-    let parent_service = parent_descriptor.service.clone();
+    let mut id_remaps = Vec::new();
 
     for mutation in nested.iter_mut() {
+        let old_id = mutation.payload.entity_id.clone();
+
         let Some(parent_relation) = parent_descriptor
             .relations
             .iter()
@@ -655,23 +1085,8 @@ pub fn link_nested_to_parent(parent_descriptor: &EntityDescriptor, parent_id: &s
             continue;
         }
 
-        let expected_service = parent_relation
-            .target_service
-            .as_ref()
-            .cloned()
-            .unwrap_or_else(|| parent_service.clone());
-        if mutation.descriptor.service != expected_service {
-            continue;
-        }
-
         let child_relation = mutation.descriptor.relations.iter().find(|relation| {
-            matches!(relation.kind, RelationKind::BelongsTo)
-                && relation.target == parent_collection
-                && relation
-                    .target_service
-                    .as_ref()
-                    .map(|svc| svc == &parent_service)
-                    .unwrap_or(true)
+            matches!(relation.kind, RelationKind::BelongsTo) && relation.target == parent_collection
         });
 
         let Some(child_relation) = child_relation else {
@@ -680,13 +1095,11 @@ pub fn link_nested_to_parent(parent_descriptor: &EntityDescriptor, parent_id: &s
 
         let parent_id_string = parent_id.to_string();
 
-        if let Some(foreign_key) = parent_relation
-            .foreign_key
-            .as_ref()
-            .or(child_relation.foreign_key.as_ref())
-            && let Value::Object(map) = &mut mutation.payload.payload {
-                map.insert(foreign_key.clone(), Value::String(parent_id_string.clone()));
-            }
+        if let Some(foreign_key) = parent_relation.foreign_key.as_ref().or(child_relation.foreign_key.as_ref())
+            && let Value::Object(map) = &mut mutation.payload.payload
+        {
+            map.insert(foreign_key.clone(), Value::String(parent_id_string.clone()));
+        }
 
         let relation_alias = child_relation.alias.clone();
         let already_connected = mutation
@@ -705,13 +1118,30 @@ pub fn link_nested_to_parent(parent_descriptor: &EntityDescriptor, parent_id: &s
         if let Some(derived_id) = apply_derived_id(&mutation.descriptor, &mut mutation.payload.payload) {
             mutation.payload.entity_id = derived_id;
         }
+
+        if mutation.payload.entity_id != old_id {
+            id_remaps.push((old_id, mutation.payload.entity_id.clone()));
+        }
+    }
+
+    id_remaps
+}
+
+pub fn apply_id_remaps(relations: &mut Vec<RelationPlan>, remaps: &[(String, String)]) {
+    for (old_id, new_id) in remaps {
+        for plan in relations.iter_mut() {
+            for id in plan.add.iter_mut() {
+                if id == old_id {
+                    *id = new_id.clone();
+                }
+            }
+        }
     }
 }
 
 #[derive(Debug, Clone)]
 struct PendingRelationDelete {
     ids: Vec<String>,
-    target_service: Option<String>,
     target_collection: String,
 }
 
@@ -725,7 +1155,11 @@ pub struct RelationPlan {
 }
 
 impl RelationPlan {
-    pub fn new(alias: impl Into<String>, add: Vec<String>, remove: Vec<String>) -> Self {
+    pub fn new(
+        alias: impl Into<String>,
+        add: Vec<String>,
+        remove: Vec<String>,
+    ) -> Self {
         Self {
             alias: alias.into(),
             left_id: None,
@@ -751,7 +1185,10 @@ impl RelationPlan {
     }
 }
 
-fn apply_derived_id(descriptor: &EntityDescriptor, payload: &mut Value) -> Option<String> {
+fn apply_derived_id(
+    descriptor: &EntityDescriptor,
+    payload: &mut Value,
+) -> Option<String> {
     let derived = descriptor.derived_id.as_ref()?;
     let id_field = descriptor.id_field.as_ref()?;
     let object = payload.as_object_mut()?;
@@ -775,7 +1212,10 @@ where
     T: SnugomModel + SearchEntity,
 {
     /// Ensure the RediSearch index for this repository exists.
-    pub async fn ensure_search_index(&self, conn: &mut ConnectionManager) -> Result<(), RepoError> {
+    pub async fn ensure_search_index(
+        &self,
+        conn: &mut ConnectionManager,
+    ) -> Result<(), RepoError> {
         let definition = T::index_definition(&self.prefix);
         search::ensure_index(conn, &definition).await
     }
@@ -834,17 +1274,24 @@ where
     }
 
     pub fn key_context(&self) -> KeyContext<'_> {
-        KeyContext::new(&self.prefix, &self.descriptor.service)
+        KeyContext::new(&self.prefix)
     }
 
     /// Check if an entity with the given ID exists.
-    pub async fn exists(&self, conn: &mut ConnectionManager, entity_id: &str) -> Result<bool, RepoError> {
+    pub async fn exists(
+        &self,
+        conn: &mut ConnectionManager,
+        entity_id: &str,
+    ) -> Result<bool, RepoError> {
         let key = self.entity_key(entity_id);
         let exists: i64 = cmd("EXISTS").arg(&key).query_async(conn).await?;
         Ok(exists == 1)
     }
 
-    pub fn entity_key(&self, entity_id: &str) -> String {
+    pub fn entity_key(
+        &self,
+        entity_id: &str,
+    ) -> String {
         self.key_context().entity(&self.descriptor.collection, entity_id)
     }
 
@@ -854,146 +1301,122 @@ where
         self.key_context().collection_pattern(&self.descriptor.collection)
     }
 
-    /// Returns a glob pattern matching all keys in this service.
-    /// Useful for test cleanup of all service data (entities + auxiliary keys).
-    pub fn service_pattern(&self) -> String {
-        self.key_context().service_pattern()
-    }
-
-    pub fn relation_key(&self, alias: &str, left_id: &str) -> String {
+    pub fn relation_key(
+        &self,
+        alias: &str,
+        left_id: &str,
+    ) -> String {
         self.key_context().relation(alias, left_id)
     }
 
-    pub fn relation_reverse_key(&self, alias: &str, right_id: &str) -> String {
+    pub fn relation_reverse_key(
+        &self,
+        alias: &str,
+        right_id: &str,
+    ) -> String {
         self.key_context().relation_reverse(alias, right_id)
     }
 
-    pub async fn execute<E>(&self, executor: &mut E, plan: MutationPlan) -> Result<Vec<Value>, RepoError>
+    fn prepare_create_from(
+        &self,
+        descriptor: &EntityDescriptor,
+        mut payload: MutationPayload,
+        apply_timestamps: bool,
+    ) -> Result<PreparedCreate, RepoError> {
+        let mut mirrors = std::mem::take(&mut payload.mirrors);
+        if apply_timestamps {
+            let overrides: std::collections::BTreeSet<_> = payload.managed_overrides.drain(..).collect();
+            ensure_auto_timestamps(descriptor, &mut payload.payload, &mut mirrors, &overrides, false);
+        }
+
+        ensure_metadata_object(&mut payload.payload);
+        inject_enum_tag_shadows(descriptor, &mut payload.payload);
+
+        if let Some(derived_id) = apply_derived_id(descriptor, &mut payload.payload) {
+            payload.entity_id = derived_id;
+        }
+
+        if let Err(err) = validate_entity_json(descriptor, &payload.payload) {
+            return Err(RepoError::Validation(err));
+        }
+
+        let key_context = KeyContext::new(&self.prefix);
+        let key = key_context.entity(&descriptor.collection, &payload.entity_id);
+
+        let relations = std::mem::take(&mut payload.relations);
+        let (mut relation_mutations, pending_deletes) =
+            Self::relation_mutations_for(descriptor, &key_context, Some(&payload.entity_id), relations)?;
+        auto_parent_relations(descriptor, &key_context, &payload.entity_id, &payload.payload, &mut relation_mutations);
+
+        let mutation = build_entity_mutation(
+            descriptor,
+            key,
+            payload.payload,
+            mirrors,
+            None,
+            payload.idempotency_key,
+            payload.idempotency_ttl,
+            relation_mutations,
+        )?;
+
+        Ok(PreparedCreate {
+            entity_id: payload.entity_id,
+            mutation,
+            pending_deletes,
+        })
+    }
+
+    pub async fn execute<E>(
+        &self,
+        executor: &mut E,
+        plan: MutationPlan,
+    ) -> Result<Vec<Value>, RepoError>
     where
         E: MutationExecutor + ?Sized,
     {
         executor.execute(plan).await
     }
 
-    pub async fn create<E, B>(&self, executor: &mut E, builder: B) -> Result<CreateResult, RepoError>
+    pub async fn create<E, B>(
+        &self,
+        executor: &mut E,
+        builder: B,
+    ) -> Result<CreateResult, RepoError>
     where
         E: MutationExecutor + ?Sized,
         B: MutationPayloadBuilder,
         B::Entity: EntityMetadata,
     {
-        let MutationPayload {
-            mut entity_id,
-            mut payload,
-            mirrors,
-            relations,
-            nested,
-            idempotency_key,
-            idempotency_ttl,
-            managed_overrides,
-        } = builder.into_payload()?;
-        let overrides: ::std::collections::BTreeSet<_> = managed_overrides.into_iter().collect();
-        let mut mirrors = mirrors;
-        ensure_auto_timestamps(self.descriptor(), &mut payload, &mut mirrors, &overrides, false);
-        ensure_metadata_object(&mut payload);
-        inject_enum_tag_shadows(self.descriptor(), &mut payload);
-        if let Some(derived_id) = apply_derived_id(self.descriptor(), &mut payload) {
-            entity_id = derived_id;
-        }
-        if let Err(err) = validate_entity_json(self.descriptor(), &payload) {
-            return Err(RepoError::Validation(err));
-        }
-        let mut nested = nested;
-        link_nested_to_parent(self.descriptor(), &entity_id, &mut nested);
-        self.execute_nested(executor, nested).await?;
-        let key = self.entity_key(&entity_id);
-        let key_context = self.key_context();
-        let (relation_mutations, pending_deletes) =
-            Self::relation_mutations_for(self.descriptor(), &key_context, Some(&entity_id), relations)?;
-        let mut plan = MutationPlan::new();
-        let mutation = build_entity_mutation(
-            self.descriptor(),
-            key,
-            payload,
-            mirrors,
-            None,
-            idempotency_key,
-            idempotency_ttl,
-            relation_mutations,
-        )?;
-        plan.push(MutationCommand::UpsertEntity(mutation));
-        Self::enqueue_relation_deletes_for_context(&key_context, self.descriptor(), pending_deletes, &mut plan)?;
-        let responses = self.execute(executor, plan).await?;
-        if let Some(actual_id) = responses
-            .last()
-            .and_then(|value| value.get("entity_id"))
-            .and_then(|value| value.as_str())
-        {
-            entity_id = actual_id.to_string();
-        }
-        Ok(CreateResult {
-            id: entity_id,
-            responses,
-        })
+        let payload = builder.into_payload()?;
+        self.create_from_payload(executor, payload).await
     }
 
-    /// Internal method to create from an already-validated payload.
-    async fn create_from_payload<E>(&self, executor: &mut E, payload: MutationPayload) -> Result<CreateResult, RepoError>
+    async fn create_from_payload<E>(
+        &self,
+        executor: &mut E,
+        mut payload: MutationPayload,
+    ) -> Result<CreateResult, RepoError>
     where
         E: MutationExecutor + ?Sized,
     {
-        let MutationPayload {
-            mut entity_id,
-            mut payload,
-            mirrors,
-            relations,
-            nested,
-            idempotency_key,
-            idempotency_ttl,
-            managed_overrides,
-        } = payload;
-        let overrides: ::std::collections::BTreeSet<_> = managed_overrides.into_iter().collect();
-        let mut mirrors = mirrors;
-        ensure_auto_timestamps(self.descriptor(), &mut payload, &mut mirrors, &overrides, false);
-        ensure_metadata_object(&mut payload);
-        inject_enum_tag_shadows(self.descriptor(), &mut payload);
-        if let Some(derived_id) = apply_derived_id(self.descriptor(), &mut payload) {
-            entity_id = derived_id;
+        let mut nested = std::mem::take(&mut payload.nested);
+        if !nested.is_empty() {
+            let id_remaps = link_nested_to_parent(self.descriptor(), &payload.entity_id, &mut nested);
+            apply_id_remaps(&mut payload.relations, &id_remaps);
+            self.execute_nested(executor, nested).await?;
         }
-        if let Err(err) = validate_entity_json(self.descriptor(), &payload) {
-            return Err(RepoError::Validation(err));
-        }
-        let mut nested = nested;
-        link_nested_to_parent(self.descriptor(), &entity_id, &mut nested);
-        self.execute_nested(executor, nested).await?;
-        let key = self.entity_key(&entity_id);
-        let key_context = self.key_context();
-        let (relation_mutations, pending_deletes) =
-            Self::relation_mutations_for(self.descriptor(), &key_context, Some(&entity_id), relations)?;
+
+        let prepared = self.prepare_create_from(self.descriptor(), payload, true)?;
         let mut plan = MutationPlan::new();
-        let mutation = build_entity_mutation(
-            self.descriptor(),
-            key,
-            payload,
-            mirrors,
-            None,
-            idempotency_key,
-            idempotency_ttl,
-            relation_mutations,
-        )?;
-        plan.push(MutationCommand::UpsertEntity(mutation));
-        Self::enqueue_relation_deletes_for_context(&key_context, self.descriptor(), pending_deletes, &mut plan)?;
+        plan.push(MutationCommand::UpsertEntity(prepared.mutation));
+        Self::enqueue_relation_deletes_for_context(&self.key_context(), self.descriptor(), prepared.pending_deletes, &mut plan)?;
         let responses = self.execute(executor, plan).await?;
-        if let Some(actual_id) = responses
-            .last()
-            .and_then(|value| value.get("entity_id"))
-            .and_then(|value| value.as_str())
-        {
+
+        let mut entity_id = prepared.entity_id;
+        if let Some(actual_id) = responses.last().and_then(|v| v.get("entity_id")).and_then(|v| v.as_str()) {
             entity_id = actual_id.to_string();
         }
-        Ok(CreateResult {
-            id: entity_id,
-            responses,
-        })
+        Ok(CreateResult { id: entity_id, responses })
     }
 
     pub async fn delete<E>(
@@ -1015,7 +1438,11 @@ where
         self.execute(executor, plan).await
     }
 
-    pub async fn update_patch<E, B>(&self, executor: &mut E, builder: B) -> Result<Vec<Value>, RepoError>
+    pub async fn update_patch<E, B>(
+        &self,
+        executor: &mut E,
+        builder: B,
+    ) -> Result<Vec<Value>, RepoError>
     where
         E: MutationExecutor + ?Sized,
         B: UpdatePatchBuilder,
@@ -1025,7 +1452,11 @@ where
         self.execute_patch(executor, patch).await
     }
 
-    async fn execute_patch<E>(&self, executor: &mut E, patch: MutationPatch) -> Result<Vec<Value>, RepoError>
+    async fn execute_patch<E>(
+        &self,
+        executor: &mut E,
+        patch: MutationPatch,
+    ) -> Result<Vec<Value>, RepoError>
     where
         E: MutationExecutor + ?Sized,
         T: EntityMetadata,
@@ -1034,7 +1465,7 @@ where
             entity_id,
             expected_version,
             mut operations,
-            relations,
+            mut relations,
             mut nested,
             idempotency_key,
             idempotency_ttl,
@@ -1045,7 +1476,8 @@ where
         }
 
         if !nested.is_empty() {
-            link_nested_to_parent(self.descriptor(), &entity_id, &mut nested);
+            let id_remaps = link_nested_to_parent(self.descriptor(), &entity_id, &mut nested);
+            apply_id_remaps(&mut relations, &id_remaps);
             self.execute_nested(executor, ::std::mem::take(&mut nested)).await?;
         }
 
@@ -1171,7 +1603,11 @@ where
     ///
     /// Returns `RepoError::AlreadyExists` if an entity with the same ID exists.
     /// Use the `upsert` operation if you want create-or-update semantics.
-    pub async fn create_with_conn<B>(&self, conn: &mut ConnectionManager, builder: B) -> Result<CreateResult, RepoError>
+    pub async fn create_with_conn<B>(
+        &self,
+        conn: &mut ConnectionManager,
+        builder: B,
+    ) -> Result<CreateResult, RepoError>
     where
         B: MutationPayloadBuilder,
         B::Entity: EntityMetadata,
@@ -1197,18 +1633,20 @@ where
     /// This is a convenience method that creates the entity and then fetches it.
     /// Use this when you need the full entity back after creation.
     /// For better performance when you only need the ID, use `create_with_conn`.
-    pub async fn create_and_get<B>(&self, conn: &mut ConnectionManager, builder: B) -> Result<T, RepoError>
+    pub async fn create_and_get<B>(
+        &self,
+        conn: &mut ConnectionManager,
+        builder: B,
+    ) -> Result<T, RepoError>
     where
         B: MutationPayloadBuilder,
         B::Entity: EntityMetadata,
         T: DeserializeOwned,
     {
         let result = self.create_with_conn(conn, builder).await?;
-        self.get(conn, &result.id)
-            .await?
-            .ok_or(RepoError::NotFound {
-                entity_id: Some(result.id),
-            })
+        self.get(conn, &result.id).await?.ok_or(RepoError::NotFound {
+            entity_id: Some(result.id),
+        })
     }
 
     /// Upsert: creates if entity doesn't exist, updates if it does.
@@ -1239,9 +1677,7 @@ where
         let update_patch = update_builder.into_patch()?;
 
         // Build the upsert command
-        let command = self
-            .build_upsert_command(create_payload, update_patch)
-            .await?;
+        let command = self.build_upsert_command(create_payload, update_patch).await?;
 
         // Execute the command
         let mut plan = MutationPlan::new();
@@ -1255,12 +1691,9 @@ where
             message: Cow::Borrowed("upsert returned no response"),
         })?;
 
-        let branch = response
-            .get("branch")
-            .and_then(|v| v.as_str())
-            .ok_or(RepoError::Other {
-                message: Cow::Borrowed("upsert response missing 'branch' field"),
-            })?;
+        let branch = response.get("branch").and_then(|v| v.as_str()).ok_or(RepoError::Other {
+            message: Cow::Borrowed("upsert response missing 'branch' field"),
+        })?;
 
         match branch {
             "created" => {
@@ -1301,8 +1734,7 @@ where
         let key_context = self.key_context();
 
         // Process create payload (timestamps, metadata, validation)
-        let overrides: ::std::collections::BTreeSet<_> =
-            create_payload.managed_overrides.iter().cloned().collect();
+        let overrides: ::std::collections::BTreeSet<_> = create_payload.managed_overrides.iter().cloned().collect();
         ensure_auto_timestamps(
             self.descriptor(),
             &mut create_payload.payload,
@@ -1319,17 +1751,12 @@ where
         }
 
         // Serialize create payload
-        let create_payload_json = serde_json::to_string(&create_payload.payload).map_err(|err| {
-            RepoError::Other {
-                message: Cow::Owned(format!("failed to serialize create payload: {err}")),
-            }
+        let create_payload_json = serde_json::to_string(&create_payload.payload).map_err(|err| RepoError::Other {
+            message: Cow::Owned(format!("failed to serialize create payload: {err}")),
         })?;
 
         // Build create unique constraints
-        let create_unique_constraints = build_unique_constraint_checks(
-            self.descriptor(),
-            &create_payload.payload,
-        );
+        let create_unique_constraints = build_unique_constraint_checks(self.descriptor(), &create_payload.payload);
 
         // Build create relations (use create entity_id)
         let (create_relations, _) = Self::relation_mutations_for(
@@ -1343,8 +1770,7 @@ where
         let update_operations = self.build_update_operations(&update_patch)?;
 
         // Build update unique constraints from patch operations
-        let update_unique_constraints =
-            self.build_update_unique_constraints(&update_patch.operations);
+        let update_unique_constraints = self.build_update_unique_constraints(&update_patch.operations);
 
         // Build update relations (use update entity_id)
         let (update_relations, _) = Self::relation_mutations_for(
@@ -1355,12 +1781,8 @@ where
         )?;
 
         // Get idempotency from either payload (prefer create's)
-        let idempotency_key = create_payload
-            .idempotency_key
-            .or(update_patch.idempotency_key);
-        let idempotency_ttl = create_payload
-            .idempotency_ttl
-            .or(update_patch.idempotency_ttl);
+        let idempotency_key = create_payload.idempotency_key.or(update_patch.idempotency_key);
+        let idempotency_ttl = create_payload.idempotency_ttl.or(update_patch.idempotency_ttl);
 
         Ok(UpsertCommand {
             update_key,
@@ -1416,19 +1838,14 @@ where
             message: Cow::Borrowed("get_or_create returned no response"),
         })?;
 
-        let branch = response
-            .get("branch")
-            .and_then(|v| v.as_str())
-            .ok_or(RepoError::Other {
-                message: Cow::Borrowed("get_or_create response missing 'branch' field"),
-            })?;
+        let branch = response.get("branch").and_then(|v| v.as_str()).ok_or(RepoError::Other {
+            message: Cow::Borrowed("get_or_create response missing 'branch' field"),
+        })?;
 
         // Parse the entity from the response
-        let entity_value = response
-            .get("entity")
-            .ok_or(RepoError::Other {
-                message: Cow::Borrowed("get_or_create response missing 'entity' field"),
-            })?;
+        let entity_value = response.get("entity").ok_or(RepoError::Other {
+            message: Cow::Borrowed("get_or_create response missing 'entity' field"),
+        })?;
 
         // The entity is returned as an array with single element from JSON.GET with $
         let entity_json = if let Some(arr) = entity_value.as_array() {
@@ -1463,8 +1880,7 @@ where
         let key_context = self.key_context();
 
         // Process create payload (timestamps, metadata, validation)
-        let overrides: ::std::collections::BTreeSet<_> =
-            create_payload.managed_overrides.iter().cloned().collect();
+        let overrides: ::std::collections::BTreeSet<_> = create_payload.managed_overrides.iter().cloned().collect();
         ensure_auto_timestamps(
             self.descriptor(),
             &mut create_payload.payload,
@@ -1481,25 +1897,16 @@ where
         }
 
         // Serialize create payload
-        let create_payload_json = serde_json::to_string(&create_payload.payload).map_err(|err| {
-            RepoError::Other {
-                message: Cow::Owned(format!("failed to serialize create payload: {err}")),
-            }
+        let create_payload_json = serde_json::to_string(&create_payload.payload).map_err(|err| RepoError::Other {
+            message: Cow::Owned(format!("failed to serialize create payload: {err}")),
         })?;
 
         // Build unique constraints
-        let unique_constraints = build_unique_constraint_checks(
-            self.descriptor(),
-            &create_payload.payload,
-        );
+        let unique_constraints = build_unique_constraint_checks(self.descriptor(), &create_payload.payload);
 
         // Build relations
-        let (relations, _) = Self::relation_mutations_for(
-            self.descriptor(),
-            &key_context,
-            Some(&entity_id),
-            create_payload.relations,
-        )?;
+        let (relations, _) =
+            Self::relation_mutations_for(self.descriptor(), &key_context, Some(&entity_id), create_payload.relations)?;
 
         Ok(GetOrCreateCommand {
             entity_key,
@@ -1546,13 +1953,12 @@ where
                 PatchOpKind::Delete => (PatchOperationType::Delete, None),
             };
 
-            let value_json = value.as_ref().map(|v| {
-                serde_json::to_string(v).expect("serde_json::Value serialization should not fail")
-            });
+            let value_json = value
+                .as_ref()
+                .map(|v| serde_json::to_string(v).expect("serde_json::Value serialization should not fail"));
 
             let mirror_value_json = op.mirror.as_ref().map(|mirror| {
-                serde_json::to_string(&mirror.value)
-                    .expect("mirror value serialization should not fail")
+                serde_json::to_string(&mirror.value).expect("mirror value serialization should not fail")
             });
 
             operations.push(PatchOperationPayload {
@@ -1740,7 +2146,6 @@ where
                     {
                         deletes.push(PendingRelationDelete {
                             ids: delete,
-                            target_service: relation_descriptor.target_service.clone(),
                             target_collection: relation_descriptor.target.clone(),
                         });
                         Some(CascadeDirective::DeleteDependents)
@@ -1772,7 +2177,11 @@ where
         }
     }
 
-    async fn execute_nested<E>(&self, executor: &mut E, nested: Vec<NestedMutation>) -> Result<(), RepoError>
+    async fn execute_nested<E>(
+        &self,
+        executor: &mut E,
+        nested: Vec<NestedMutation>,
+    ) -> Result<(), RepoError>
     where
         E: MutationExecutor + ?Sized,
     {
@@ -1792,40 +2201,16 @@ where
                         stack.push(NestedTask::Process(child));
                     }
                 }
-                NestedTask::Execute(mut mutation) => {
-                    let key_context = KeyContext::new(&self.prefix, &mutation.descriptor.service);
-                    let key = key_context.entity(&mutation.descriptor.collection, &mutation.payload.entity_id);
-                    let mirrors = ::std::mem::take(&mut mutation.payload.mirrors);
-                    let relations = ::std::mem::take(&mut mutation.payload.relations);
-                    let idempotency_key = mutation.payload.idempotency_key.take();
-                    let idempotency_ttl = mutation.payload.idempotency_ttl.take();
-                    let (relation_mutations, pending_deletes) = Self::relation_mutations_for(
-                        &mutation.descriptor,
-                        &key_context,
-                        Some(&mutation.payload.entity_id),
-                        relations,
-                    )?;
-                    ensure_metadata_object(&mut mutation.payload.payload);
-                    inject_enum_tag_shadows(&mutation.descriptor, &mut mutation.payload.payload);
-                    if let Err(err) = validate_entity_json(&mutation.descriptor, &mutation.payload.payload) {
-                        return Err(RepoError::Validation(err));
-                    }
-                    let mutation_command = build_entity_mutation(
-                        &mutation.descriptor,
-                        key,
-                        mutation.payload.payload,
-                        mirrors,
-                        None,
-                        idempotency_key,
-                        idempotency_ttl,
-                        relation_mutations,
-                    )?;
+                NestedTask::Execute(mutation) => {
+                    let descriptor = mutation.descriptor;
+                    let prepared = self.prepare_create_from(&descriptor, mutation.payload, false)?;
+                    let key_context = KeyContext::new(&self.prefix);
                     let mut plan = MutationPlan::new();
-                    plan.push(MutationCommand::UpsertEntity(mutation_command));
+                    plan.push(MutationCommand::UpsertEntity(prepared.mutation));
                     Self::enqueue_relation_deletes_for_context(
                         &key_context,
-                        &mutation.descriptor,
-                        pending_deletes,
+                        &descriptor,
+                        prepared.pending_deletes,
                         &mut plan,
                     )?;
                     executor.execute(plan).await?;
@@ -1847,18 +2232,15 @@ where
         }
 
         for pending in deletes {
-            let target_service = pending.target_service.unwrap_or_else(|| descriptor.service.clone());
             let target_descriptor =
-                registry::get_descriptor(&target_service, &pending.target_collection).ok_or_else(|| {
-                    RepoError::Other {
-                        message: Cow::Owned(format!(
-                            "descriptor for service `{}` collection `{}` is not registered",
-                            target_service, pending.target_collection
-                        )),
-                    }
+                registry::get_descriptor(&pending.target_collection).ok_or_else(|| RepoError::Other {
+                    message: Cow::Owned(format!(
+                        "descriptor for collection `{}` is not registered",
+                        pending.target_collection
+                    )),
                 })?;
 
-            let child_context = KeyContext::new(key_context.prefix, target_service.as_str());
+            let child_context = KeyContext::new(key_context.prefix);
 
             for id in pending.ids {
                 let cascades = delete_cascades_for_descriptor(&target_descriptor, &child_context, &id)?;
@@ -1868,6 +2250,7 @@ where
                 plan.push(MutationCommand::DeleteEntity(delete));
             }
         }
+        let _ = descriptor;
 
         Ok(())
     }
@@ -2025,7 +2408,10 @@ fn ensure_metadata_object(payload: &mut Value) {
 /// The original field value is preserved for proper deserialization.
 /// Unit variant enums that already serialize to strings don't need shadow fields,
 /// but we add them anyway for consistency (the value will match the original).
-fn inject_enum_tag_shadows(descriptor: &EntityDescriptor, payload: &mut Value) {
+fn inject_enum_tag_shadows(
+    descriptor: &EntityDescriptor,
+    payload: &mut Value,
+) {
     let Some(object) = payload.as_object_mut() else {
         return;
     };
@@ -2057,7 +2443,10 @@ fn inject_enum_tag_shadows(descriptor: &EntityDescriptor, payload: &mut Value) {
 ///
 /// When a field with `normalize_enum_tag: true` is being patched, this function
 /// adds a corresponding operation for the shadow field containing the discriminant.
-fn inject_enum_tag_shadow_operations(descriptor: &EntityDescriptor, operations: &mut Vec<PatchOperation>) {
+fn inject_enum_tag_shadow_operations(
+    descriptor: &EntityDescriptor,
+    operations: &mut Vec<PatchOperation>,
+) {
     let mut shadow_ops: Vec<PatchOperation> = Vec::new();
 
     for op in operations.iter() {
@@ -2105,4 +2494,38 @@ fn inject_enum_tag_shadow_operations(descriptor: &EntityDescriptor, operations: 
     }
 
     operations.extend(shadow_ops);
+}
+
+#[cfg(test)]
+mod find_result_tests {
+    use super::{FindChildResult, FindResult};
+    use serde_json::{Value, json};
+    use std::collections::HashMap;
+
+    fn empty_result() -> FindResult {
+        FindResult { entity_value: json!({}), includes: HashMap::new(), relation_metadata: HashMap::new() }
+    }
+
+    #[test]
+    fn include_distinguishes_not_requested_from_loaded_empty() {
+        let mut result = empty_result();
+        // A key that was requested and matched zero rows.
+        result.includes.insert("loaded_empty".to_string(), Vec::new());
+
+        // Not requested -> None (load-bearing distinction for partial responses).
+        assert_eq!(result.include::<Value>("never_requested").expect("ok"), None);
+        // Requested, zero rows -> Some(empty), never None.
+        assert_eq!(result.include::<Value>("loaded_empty").expect("ok"), Some(Vec::<Value>::new()));
+    }
+
+    #[test]
+    fn include_deserializes_present_children() {
+        let mut result = empty_result();
+        result.includes.insert(
+            "rows".to_string(),
+            vec![FindChildResult { value: json!({"n": 1}), includes: HashMap::new() }],
+        );
+        let rows: Option<Vec<Value>> = result.include("rows").expect("ok");
+        assert_eq!(rows, Some(vec![json!({"n": 1})]));
+    }
 }

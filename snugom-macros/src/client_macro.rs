@@ -26,8 +26,7 @@
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
 use syn::{
-    Data, DeriveInput, Error, Fields, Ident, Result, Token,
-    bracketed,
+    Data, DeriveInput, Error, Fields, Ident, Result, Token, bracketed,
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
 };
@@ -175,19 +174,16 @@ impl ParsedClient {
         })
     }
 
-    fn find_fields(input: &DeriveInput, attrs: &ClientAttributes) -> Result<(Ident, Ident)> {
+    fn find_fields(
+        input: &DeriveInput,
+        attrs: &ClientAttributes,
+    ) -> Result<(Ident, Ident)> {
         let Data::Struct(data_struct) = &input.data else {
-            return Err(Error::new(
-                input.ident.span(),
-                "SnugomClient can only be derived on structs",
-            ));
+            return Err(Error::new(input.ident.span(), "SnugomClient can only be derived on structs"));
         };
 
         let Fields::Named(fields) = &data_struct.fields else {
-            return Err(Error::new(
-                input.ident.span(),
-                "SnugomClient requires named fields",
-            ));
+            return Err(Error::new(input.ident.span(), "SnugomClient requires named fields"));
         };
 
         // Use explicit fields from attributes if provided

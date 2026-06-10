@@ -3,7 +3,7 @@ use chrono::Utc;
 use clap::Subcommand;
 
 use crate::context::ProjectContext;
-use crate::differ::{diff_schemas, load_latest_snapshots, EntityDiff, MigrationComplexity};
+use crate::differ::{EntityDiff, MigrationComplexity, diff_schemas, load_latest_snapshots};
 use crate::examples::ExampleGroup;
 use crate::generator::{generate_migration_file, update_migrations_mod, update_source_schema_version};
 use crate::output::OutputManager;
@@ -80,10 +80,14 @@ pub async fn handle_migrate_commands(
     }
 
     match command {
-        MigrateCommands::Create { name } => {
+        MigrateCommands::Create {
+            name,
+        } => {
             handle_create(&ctx, &name, output).await?;
         }
-        MigrateCommands::Deploy { dry_run } => {
+        MigrateCommands::Deploy {
+            dry_run,
+        } => {
             handle_deploy(&ctx, dry_run, output).await?;
         }
         MigrateCommands::Resolve {
@@ -98,14 +102,17 @@ pub async fn handle_migrate_commands(
     Ok(())
 }
 
-async fn handle_create(ctx: &ProjectContext, name: &str, output: &OutputManager) -> Result<()> {
+async fn handle_create(
+    ctx: &ProjectContext,
+    name: &str,
+    output: &OutputManager,
+) -> Result<()> {
     output.heading("Generate Migration");
     output.bullet(&format!("Migration name: {name}"));
 
     // Step 1: Discover files with SnugomEntity
     output.progress("Discovering SnugomEntity types...");
-    let discovered = discover_entities(&ctx.project_root)
-        .context("Failed to discover entity files")?;
+    let discovered = discover_entities(&ctx.project_root).context("Failed to discover entity files")?;
     output.clear_line();
 
     if discovered.is_empty() {
@@ -129,10 +136,7 @@ async fn handle_create(ctx: &ProjectContext, name: &str, output: &OutputManager)
             }
             Err(err) => {
                 output.clear_line();
-                output.warning(&format!(
-                    "Failed to parse {}: {err}",
-                    file.relative_path
-                ));
+                output.warning(&format!("Failed to parse {}: {err}", file.relative_path));
             }
         }
     }
@@ -147,8 +151,7 @@ async fn handle_create(ctx: &ProjectContext, name: &str, output: &OutputManager)
 
     // Step 3: Load existing snapshots and compute diffs
     output.progress("Loading existing snapshots...");
-    let existing_snapshots = load_latest_snapshots(&ctx.schemas_dir)
-        .context("Failed to load existing snapshots")?;
+    let existing_snapshots = load_latest_snapshots(&ctx.schemas_dir).context("Failed to load existing snapshots")?;
     output.clear_line();
 
     output.info(&format!("Found {} existing snapshot(s)", existing_snapshots.len()));
@@ -162,10 +165,7 @@ async fn handle_create(ctx: &ProjectContext, name: &str, output: &OutputManager)
         let diff = diff_schemas(old_snapshot, schema);
 
         if diff.is_new() {
-            output.bullet(&format!(
-                "{} (NEW) - baseline v{}",
-                diff.entity, diff.new_version
-            ));
+            output.bullet(&format!("{} (NEW) - baseline v{}", diff.entity, diff.new_version));
         } else if diff.has_changes() {
             output.bullet(&format!(
                 "{} (v{} → v{}) - {} change(s) [{}]",
@@ -188,10 +188,7 @@ async fn handle_create(ctx: &ProjectContext, name: &str, output: &OutputManager)
     }
 
     // Filter to only entities with changes
-    let diffs_with_changes: Vec<&EntityDiff> = diffs
-        .iter()
-        .filter(|d| d.has_changes() || d.is_new())
-        .collect();
+    let diffs_with_changes: Vec<&EntityDiff> = diffs.iter().filter(|d| d.has_changes() || d.is_new()).collect();
 
     if diffs_with_changes.is_empty() {
         output.success("No schema changes detected");
@@ -206,8 +203,7 @@ async fn handle_create(ctx: &ProjectContext, name: &str, output: &OutputManager)
     let migration = generate_migration_file(name, &diffs_owned, timestamp);
 
     // Write migration file
-    std::fs::create_dir_all(&ctx.migrations_dir)
-        .context("Failed to create migrations directory")?;
+    std::fs::create_dir_all(&ctx.migrations_dir).context("Failed to create migrations directory")?;
 
     let migration_path = ctx.migrations_dir.join(&migration.filename);
     std::fs::write(&migration_path, &migration.content)
@@ -217,8 +213,7 @@ async fn handle_create(ctx: &ProjectContext, name: &str, output: &OutputManager)
     output.bullet(&format!("Type: {}", migration.complexity));
 
     // Update migrations/mod.rs
-    update_migrations_mod(&ctx.migrations_dir, &migration.module_name)
-        .context("Failed to update migrations/mod.rs")?;
+    update_migrations_mod(&ctx.migrations_dir, &migration.module_name).context("Failed to update migrations/mod.rs")?;
     output.bullet("Updated: src/migrations/mod.rs");
 
     // Step 6: Update source files with new schema versions
@@ -226,12 +221,7 @@ async fn handle_create(ctx: &ProjectContext, name: &str, output: &OutputManager)
     for diff in &diffs_owned {
         if diff.is_new() || diff.has_changes() {
             let source_path = ctx.project_root.join(&diff.source_file);
-            match update_source_schema_version(
-                &source_path,
-                &diff.entity,
-                diff.old_version,
-                diff.new_version,
-            ) {
+            match update_source_schema_version(&source_path, &diff.entity, diff.old_version, diff.new_version) {
                 Ok(true) => {
                     output.bullet(&format!(
                         "{}: schema {} → {}",
@@ -252,8 +242,7 @@ async fn handle_create(ctx: &ProjectContext, name: &str, output: &OutputManager)
 
     // Step 7: Save new snapshots
     output.heading("Saving Snapshots");
-    std::fs::create_dir_all(&ctx.schemas_dir)
-        .context("Failed to create schemas directory")?;
+    std::fs::create_dir_all(&ctx.schemas_dir).context("Failed to create schemas directory")?;
 
     for diff in &diffs_owned {
         // Find the corresponding schema
@@ -266,8 +255,7 @@ async fn handle_create(ctx: &ProjectContext, name: &str, output: &OutputManager)
             let filename = updated_schema.snapshot_filename();
             let snapshot_path = ctx.schemas_dir.join(&filename);
 
-            let json = serde_json::to_string_pretty(&updated_schema)
-                .context("Failed to serialize schema")?;
+            let json = serde_json::to_string_pretty(&updated_schema).context("Failed to serialize schema")?;
 
             std::fs::write(&snapshot_path, json)
                 .with_context(|| format!("Failed to write snapshot: {}", snapshot_path.display()))?;
@@ -343,7 +331,11 @@ fn format_change(change: &crate::differ::EntityChange) -> String {
     }
 }
 
-async fn handle_deploy(ctx: &ProjectContext, dry_run: bool, output: &OutputManager) -> Result<()> {
+async fn handle_deploy(
+    ctx: &ProjectContext,
+    dry_run: bool,
+    output: &OutputManager,
+) -> Result<()> {
     use crate::executor::MigrationRunner;
 
     output.heading("Deploy Migrations");
@@ -377,23 +369,16 @@ async fn handle_deploy(ctx: &ProjectContext, dry_run: bool, output: &OutputManag
     if stats.migrations_applied > 0 {
         output.success(&format!(
             "{} migration(s) applied in {}ms",
-            stats.migrations_applied,
-            stats.total_time_ms
+            stats.migrations_applied, stats.total_time_ms
         ));
     }
 
     if stats.migrations_skipped > 0 {
-        output.info(&format!(
-            "{} migration(s) already applied",
-            stats.migrations_skipped
-        ));
+        output.info(&format!("{} migration(s) already applied", stats.migrations_skipped));
     }
 
     if stats.documents_transformed > 0 {
-        output.bullet(&format!(
-            "{} document(s) transformed",
-            stats.documents_transformed
-        ));
+        output.bullet(&format!("{} document(s) transformed", stats.documents_transformed));
     }
 
     if dry_run {
@@ -410,15 +395,19 @@ async fn handle_resolve(
     rolled_back: bool,
     output: &OutputManager,
 ) -> Result<()> {
-    use crate::executor::{MigrationRunner, MigrationState};
     use crate::executor::state::calculate_checksum;
+    use crate::executor::{MigrationRunner, MigrationState};
 
     if !applied && !rolled_back {
         output.error("Must specify either --applied or --rolled-back");
         anyhow::bail!("Missing resolution flag");
     }
 
-    let status = if applied { "applied" } else { "rolled-back" };
+    let status = if applied {
+        "applied"
+    } else {
+        "rolled-back"
+    };
 
     output.heading(&format!("Resolve Migration: {migration_name}"));
     output.info(&format!("Marking migration as: {status}"));
@@ -473,7 +462,7 @@ async fn handle_resolve(
 mod tests {
     use super::*;
     use crate::differ::{ChangeType, EntityChange, FieldChange, IndexChange, RelationChange, UniqueConstraintChange};
-    use crate::scanner::{FieldInfo, RelationInfo, RelationKind, CascadeStrategy, UniqueConstraint, FilterableType};
+    use crate::scanner::{CascadeStrategy, FieldInfo, FilterableType, RelationInfo, RelationKind, UniqueConstraint};
 
     #[test]
     fn test_format_change_field_added() {

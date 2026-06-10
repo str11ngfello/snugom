@@ -110,7 +110,9 @@ impl SocialNetworkRepos {
 }
 
 pub async fn connection_manager() -> anyhow::Result<ConnectionManager> {
-    let client = redis::Client::open("redis://127.0.0.1/")?;
+    let url = std::env::var("TEST_REDIS_URL")
+        .expect("TEST_REDIS_URL must be set to run examples");
+    let client = redis::Client::open(url.as_str())?;
     Ok(client.get_connection_manager().await?)
 }
 

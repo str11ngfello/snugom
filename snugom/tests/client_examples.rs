@@ -136,42 +136,64 @@ async fn client_ex18_cascade_strategies() {
         .expect("example should succeed");
 }
 
-// ============ Advanced Patterns (19-23) ============
+// ============ Find with Includes (19-21) ============
 
 #[tokio::test]
-async fn client_ex19_multi_entity_client() {
-    snugom::examples::client::ex19_multi_entity_client::run()
+async fn client_ex19_find_with_includes() {
+    snugom::examples::client::ex19_find_with_includes::run()
         .await
         .expect("example should succeed");
 }
 
-// TODO: These examples require rethinking how version fields work in SnugOM
+#[tokio::test]
+async fn client_ex20_find_with_options() {
+    snugom::examples::client::ex20_find_with_options::run()
+        .await
+        .expect("example should succeed");
+}
+
+#[tokio::test]
+async fn client_ex21_find_many_with_includes() {
+    snugom::examples::client::ex21_find_many_with_includes::run()
+        .await
+        .expect("example should succeed");
+}
+
+// ============ Advanced Patterns (22-26) ============
+
+#[tokio::test]
+async fn client_ex22_multi_entity_client() {
+    snugom::examples::client::ex22_multi_entity_client::run()
+        .await
+        .expect("example should succeed");
+}
+
 #[tokio::test]
 #[ignore = "version field handling needs rethink"]
-async fn client_ex20_error_handling() {
-    snugom::examples::client::ex20_error_handling::run()
+async fn client_ex23_error_handling() {
+    snugom::examples::client::ex23_error_handling::run()
         .await
         .expect("example should succeed");
 }
 
 #[tokio::test]
 #[ignore = "version field handling needs rethink"]
-async fn client_ex21_optimistic_locking() {
-    snugom::examples::client::ex21_optimistic_locking::run()
+async fn client_ex24_optimistic_locking() {
+    snugom::examples::client::ex24_optimistic_locking::run()
         .await
         .expect("example should succeed");
 }
 
 #[tokio::test]
-async fn client_ex22_idempotency_keys() {
-    snugom::examples::client::ex22_idempotency_keys::run()
+async fn client_ex25_idempotency_keys() {
+    snugom::examples::client::ex25_idempotency_keys::run()
         .await
         .expect("example should succeed");
 }
 
 #[tokio::test]
-async fn client_ex23_batch_workflows() {
-    snugom::examples::client::ex23_batch_workflows::run()
+async fn client_ex26_batch_workflows() {
+    snugom::examples::client::ex26_batch_workflows::run()
         .await
         .expect("example should succeed");
 }
